@@ -29,7 +29,11 @@ class OwnModuleTest {
     @Test
     void readsItselfWithItsSources() {
         assertEquals(List.of(
+                        "com.homing_labs.cq.lang.java.def.JavaField",
+                        "com.homing_labs.cq.lang.java.def.JavaMethod",
                         "com.homing_labs.cq.lang.java.def.JavaSource",
+                        "com.homing_labs.cq.lang.java.def.JavaType",
+                        "com.homing_labs.cq.lang.java.def.JavaTypes",
                         "com.homing_labs.cq.lang.java.def.JavaUnit",
                         "com.homing_labs.cq.lang.java.extract.JavaCodeBase",
                         "com.homing_labs.cq.lang.java.extract.JavaCodeBases",

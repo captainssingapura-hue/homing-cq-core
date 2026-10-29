@@ -2,8 +2,8 @@ package com.homing_labs.cq.lang.java.extract;
 
 import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.def.JavaUnit;
+import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
-import hue.captains.singapura.tao.ontology.ValueObject;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -125,7 +125,7 @@ public record JavaUnitReader() implements StatelessFunctionalObject {
     }
 
     /** A top-level class as its class file names it - {@code a/b/C} - and the name of the file that declares it. */
-    private record TopLevelClass(String internalName, String sourceFile) implements ValueObject {
+    private record TopLevelClass(String internalName, String sourceFile) implements Scalar {
 
         String binaryName() {
             return internalName.replace('/', '.');
