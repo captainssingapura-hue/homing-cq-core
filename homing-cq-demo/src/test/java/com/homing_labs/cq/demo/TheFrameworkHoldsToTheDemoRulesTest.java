@@ -9,6 +9,7 @@ import com.homing_labs.cq.enforcer.def.Enforcer;
 import com.homing_labs.cq.enforcer.def.Result;
 import com.homing_labs.cq.lang.java.def.JavaUnit;
 import com.homing_labs.cq.lang.java.extract.JavaUnitReader;
+import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -23,9 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TheFrameworkHoldsToTheDemoRulesTest {
 
-    /** One class of each module checked: principle, core model, enforcer model, Java, and this demo. */
+    /** One class of each module checked: principle, core model, enforcer model, Java, Java taxonomy, and this demo. */
     private final List<Class<?>> anchors = List.of(
-            Principle.class, JavaLang.class, Enforcer.class, JavaUnit.class, NoStaticMethods.class);
+            Principle.class, JavaLang.class, Enforcer.class, JavaUnit.class, ObjectKind.class, NoStaticMethods.class);
 
     @Test
     void everyModuleConforms() {
