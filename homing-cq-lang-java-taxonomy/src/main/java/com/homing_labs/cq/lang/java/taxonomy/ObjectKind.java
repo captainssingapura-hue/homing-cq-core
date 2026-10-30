@@ -14,6 +14,6 @@ import hue.captains.singapura.tao.ontology.Stateless;
  * adding them here.</p>
  */
 public sealed interface ObjectKind extends Stateless
-        permits ClassKind, Subordinate, Constructor, StaticInitialiser, Superclass, Superinterface,
+        permits ClassKind, Subordinate, Constructor, StaticInitialiser, Superclass, Superinterface, Dependency,
         Field, Method, MemberClass {
 }

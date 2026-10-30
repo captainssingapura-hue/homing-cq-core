@@ -31,7 +31,7 @@ public record ClassScanner() implements StatelessFunctionalObject {
 
     public static final ClassScanner INSTANCE = new ClassScanner();
 
-    /** The objects in one class file: the class, then its members. */
+    /** The objects in one class file: the class, then its members, then its dependencies. */
     public List<Occurrence> scan(final byte[] classFile) {
         final ClassModel model = ClassFile.of().parse(classFile);
         final String name = model.thisClass().asInternalName();
@@ -55,6 +55,7 @@ public record ClassScanner() implements StatelessFunctionalObject {
                 .forEach(inner -> found.add(new Occurrence.OfMember(name,
                         places.of(inner.flags().contains(AccessFlag.STATIC)), MemberClass.INSTANCE,
                         inner.innerClass().asInternalName()))));
+        found.addAll(DependencyFinder.INSTANCE.find(model, places.top()));
         return List.copyOf(found);
     }
 

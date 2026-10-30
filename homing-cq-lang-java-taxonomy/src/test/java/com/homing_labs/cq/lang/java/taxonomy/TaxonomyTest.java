@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static java.util.Map.entry;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,6 +31,9 @@ class TaxonomyTest {
                         ClassKind.Enum.class, ClassKind.Record.class, ClassKind.Annotation.class,
                         Subordinate.ClassObject.class, Subordinate.Instance.class,
                         Constructor.class, StaticInitialiser.class, Superclass.class, Superinterface.class,
+                        Dependency.Signature.class, Dependency.Annotation.class, Dependency.Code.class,
+                        Dependency.LocalVariable.class, Dependency.Nesting.class, Dependency.PermittedSubclass.class,
+                        Dependency.InlinedConstant.class,
                         Field.class, Method.Declaration.class, Method.Implementation.class,
                         Method.DefaultImplementation.class, Method.NativeImplementation.class, MemberClass.class),
                 kinds(ObjectKind.class));
@@ -60,28 +64,49 @@ class TaxonomyTest {
 
     @Test
     void theTopLevelMembersOfEachKindOfClass() {
-        assertEquals(Map.of(Subordinate.ClassObject.class, One.class, Subordinate.Instance.class, One.class,
-                        StaticInitialiser.class, ZeroOrOne.class, Superinterface.class, ZeroOrMore.class,
-                        Constructor.class, OneOrMore.class, Superclass.class, ZeroOrOne.class),
+        assertEquals(withDependencies(true, Map.of(Subordinate.ClassObject.class, One.class,
+                        Subordinate.Instance.class, One.class, StaticInitialiser.class, ZeroOrOne.class,
+                        Superinterface.class, ZeroOrMore.class, Constructor.class, OneOrMore.class,
+                        Superclass.class, ZeroOrOne.class)),
                 members(MemberOf.Class.class));
-        assertEquals(Map.of(Subordinate.ClassObject.class, One.class, Subordinate.Instance.class, One.class,
-                        StaticInitialiser.class, ZeroOrOne.class, Superinterface.class, ZeroOrMore.class,
-                        Constructor.class, OneOrMore.class, Superclass.class, One.class),
+        assertEquals(withDependencies(true, Map.of(Subordinate.ClassObject.class, One.class,
+                        Subordinate.Instance.class, One.class, StaticInitialiser.class, ZeroOrOne.class,
+                        Superinterface.class, ZeroOrMore.class, Constructor.class, OneOrMore.class,
+                        Superclass.class, One.class)),
                 members(MemberOf.AbstractClass.class));
-        assertEquals(Map.of(Subordinate.ClassObject.class, One.class, Subordinate.Instance.class, One.class,
-                        StaticInitialiser.class, ZeroOrOne.class, Superinterface.class, ZeroOrMore.class),
+        assertEquals(withDependencies(true, Map.of(Subordinate.ClassObject.class, One.class,
+                        Subordinate.Instance.class, One.class, StaticInitialiser.class, ZeroOrOne.class,
+                        Superinterface.class, ZeroOrMore.class)),
                 members(MemberOf.Interface.class));
-        assertEquals(Map.of(Subordinate.ClassObject.class, One.class, Subordinate.Instance.class, One.class,
-                        StaticInitialiser.class, One.class, Superinterface.class, ZeroOrMore.class,
-                        Constructor.class, OneOrMore.class, Superclass.class, One.class),
+        assertEquals(withDependencies(true, Map.of(Subordinate.ClassObject.class, One.class,
+                        Subordinate.Instance.class, One.class, StaticInitialiser.class, One.class,
+                        Superinterface.class, ZeroOrMore.class, Constructor.class, OneOrMore.class,
+                        Superclass.class, One.class)),
                 members(MemberOf.Enum.class));
-        assertEquals(Map.of(Subordinate.ClassObject.class, One.class, Subordinate.Instance.class, One.class,
-                        StaticInitialiser.class, ZeroOrOne.class, Superinterface.class, ZeroOrMore.class,
-                        Constructor.class, OneOrMore.class, Superclass.class, One.class),
+        assertEquals(withDependencies(false, Map.of(Subordinate.ClassObject.class, One.class,
+                        Subordinate.Instance.class, One.class, StaticInitialiser.class, ZeroOrOne.class,
+                        Superinterface.class, ZeroOrMore.class, Constructor.class, OneOrMore.class,
+                        Superclass.class, One.class)),
                 members(MemberOf.Record.class));
-        assertEquals(Map.of(Subordinate.ClassObject.class, One.class, Subordinate.Instance.class, One.class,
-                        StaticInitialiser.class, ZeroOrOne.class, Superinterface.class, One.class),
+        assertEquals(withDependencies(false, Map.of(Subordinate.ClassObject.class, One.class,
+                        Subordinate.Instance.class, One.class, StaticInitialiser.class, ZeroOrOne.class,
+                        Superinterface.class, One.class)),
                 members(MemberOf.Annotation.class));
+    }
+
+    /**
+     * A kind of class's other top-level members, with any number of each dependency - a permitted subclass too, if it
+     * can be sealed.
+     */
+    private Map<Class<?>, Class<?>> withDependencies(final boolean sealable, final Map<Class<?>, Class<?>> others) {
+        final Map<Class<?>, Class<?>> members = new HashMap<>(others);
+        Stream.of(Dependency.Signature.class, Dependency.Annotation.class, Dependency.Code.class,
+                        Dependency.LocalVariable.class, Dependency.Nesting.class, Dependency.InlinedConstant.class)
+                .forEach(dependency -> members.put(dependency, ZeroOrMore.class));
+        if (sealable) {
+            members.put(Dependency.PermittedSubclass.class, ZeroOrMore.class);
+        }
+        return members;
     }
 
     @Test
@@ -141,6 +166,13 @@ class TaxonomyTest {
         assertEquals(StaticInitialiser.INSTANCE, new StaticInitialiser());
         assertEquals(Superclass.INSTANCE, new Superclass());
         assertEquals(Superinterface.INSTANCE, new Superinterface());
+        assertEquals(Dependency.Signature.INSTANCE, new Dependency.Signature());
+        assertEquals(Dependency.Annotation.INSTANCE, new Dependency.Annotation());
+        assertEquals(Dependency.Code.INSTANCE, new Dependency.Code());
+        assertEquals(Dependency.LocalVariable.INSTANCE, new Dependency.LocalVariable());
+        assertEquals(Dependency.Nesting.INSTANCE, new Dependency.Nesting());
+        assertEquals(Dependency.PermittedSubclass.INSTANCE, new Dependency.PermittedSubclass());
+        assertEquals(Dependency.InlinedConstant.INSTANCE, new Dependency.InlinedConstant());
         assertEquals(Field.INSTANCE, new Field());
         assertEquals(Method.Declaration.INSTANCE, new Method.Declaration());
         assertEquals(Method.Implementation.INSTANCE, new Method.Implementation());

@@ -1,5 +1,6 @@
 package com.homing_labs.cq.demo.taxonomy;
 
+import java.net.HttpURLConnection;
 import java.util.function.IntSupplier;
 
 /**
@@ -7,13 +8,17 @@ import java.util.function.IntSupplier;
  * <ul>
  *     <li>superclass: {@link Enum}, which its source does not name; superinterface: {@link IntSupplier}</li>
  *     <li>constructor: one; static initialiser: the one every enum has, here with a static block too</li>
- *     <li>class object - fields: the constants {@code FIRST} and {@code SECOND}, and {@code COUNT}; implementations:
- *     {@code first}, beside {@code values} and {@code valueOf}; native implementation: {@code seed}; member class:
- *     {@code Table}</li>
+ *     <li>class object - fields: the constants {@code FIRST} and {@code SECOND}, {@code COUNT} and {@code OK};
+ *     implementations: {@code named}, beside {@code values} and {@code valueOf}; native implementation:
+ *     {@code seed}; member class: {@code Table}</li>
  *     <li>instances - field: {@code order}; declaration: {@code weight}, which each constant's body implements;
  *     implementation: {@code getAsInt}; native implementation: {@code code}; member class: {@code Slot}</li>
+ *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
+ *     nesting, permitted subclasses (the constants' bodies) and an inlined constant
+ *     ({@link HttpURLConnection#HTTP_OK})</li>
  * </ul>
  */
+@SampleAnnotation("enum")
 public enum SampleEnum implements IntSupplier {
 
     FIRST(1) {
@@ -31,6 +36,8 @@ public enum SampleEnum implements IntSupplier {
 
     static final int COUNT;
 
+    static final int OK = HttpURLConnection.HTTP_OK;
+
     static {
         COUNT = values().length;
     }
@@ -41,8 +48,8 @@ public enum SampleEnum implements IntSupplier {
         this.order = order;
     }
 
-    static SampleEnum first() {
-        return FIRST;
+    static SampleEnum named(final String name) {
+        return valueOf(name.toUpperCase());
     }
 
     static native long seed();

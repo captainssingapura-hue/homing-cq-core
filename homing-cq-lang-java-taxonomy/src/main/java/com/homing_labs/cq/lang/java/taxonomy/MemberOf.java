@@ -5,8 +5,8 @@ import hue.captains.singapura.tao.ontology.Stateless;
 /**
  * Where a kind of object belongs in a kind of class, and how many of it are there. There is one interface for each
  * {@link ClassKind}, named after it, for the top-level members of that kind of class: its class object, its instances,
- * its constructors, its static initialiser, its superclass and its superinterfaces. Within it is one for each
- * {@link Subordinate}, for the members of that subordinate - a static member of an enum, say, is a member of
+ * its constructors, its static initialiser, its superclass, its superinterfaces and its dependencies. Within it is one
+ * for each {@link Subordinate}, for the members of that subordinate - a static member of an enum, say, is a member of
  * {@link MemberOf.Enum.ClassObject}. The two levels stay apart: a member of a class object is not a top-level member of
  * its class. Only a class's own members are its members; an inherited one is a member of the supertype that has it.
  *
