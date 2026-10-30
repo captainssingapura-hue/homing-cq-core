@@ -144,6 +144,43 @@ class TaxonomyTest {
     }
 
     @Test
+    void theTaxonomyReadsWhatEachPlaceHoldsFromItsTypes() {
+        for (final ClassKind kind : List.of(ClassKind.Class.INSTANCE, ClassKind.AbstractClass.INSTANCE,
+                ClassKind.Interface.INSTANCE, ClassKind.Enum.INSTANCE, ClassKind.Record.INSTANCE,
+                ClassKind.Annotation.INSTANCE)) {
+            final Places places = Taxonomy.INSTANCE.places(kind);
+            assertEquals(kind.getClass().getSimpleName(), places.top().getSimpleName());
+            assertEquals(List.of(places.top(), places.top()),
+                    List.of(places.classObject().getEnclosingClass(), places.instance().getEnclosingClass()));
+            for (final Class<? extends MemberOf> place : places.all()) {
+                assertEquals(members(place), Taxonomy.INSTANCE.placements(kind).stream()
+                        .filter(placement -> placement.place() == place)
+                        .collect(Collectors.toMap(Placement::object, placement -> placement.cardinality().getClass())),
+                        place.getName());
+            }
+        }
+    }
+
+    @Test
+    void theTaxonomyListsEveryObjectOnce() {
+        assertEquals(kinds(ObjectKind.class), Set.copyOf(Taxonomy.INSTANCE.objects()));
+        assertEquals(kinds(ObjectKind.class).size(), Taxonomy.INSTANCE.objects().size());
+    }
+
+    @Test
+    void aCardinalityAllowsTheCountsItNames() {
+        assertEquals(List.of(false, true, false), allows(One.INSTANCE));
+        assertEquals(List.of(true, true, false), allows(ZeroOrOne.INSTANCE));
+        assertEquals(List.of(false, true, true), allows(OneOrMore.INSTANCE));
+        assertEquals(List.of(true, true, true), allows(ZeroOrMore.INSTANCE));
+    }
+
+    /** Whether a cardinality allows none, one and two. */
+    private List<Boolean> allows(final Cardinality cardinality) {
+        return List.of(cardinality.allows(0), cardinality.allows(1), cardinality.allows(2));
+    }
+
+    @Test
     void everyPlaceTakesACardinality() {
         for (final Class<?> place : MemberOf.class.getPermittedSubclasses()) {
             assertEquals(List.of(Cardinality.class),
@@ -190,6 +227,7 @@ class TaxonomyTest {
         final Set<Class<?>> types = new HashSet<>(hierarchy(ObjectKind.class));
         types.addAll(hierarchy(MemberOf.class));
         types.addAll(hierarchy(Cardinality.class));
+        types.addAll(List.of(Places.class, Placement.class, Taxonomy.class));
         final List<?> violations = types.stream()
                 .flatMap(type -> new OntologyEnforcer().enforce(type).stream())
                 .toList();

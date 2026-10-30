@@ -4,13 +4,13 @@ import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.Constructor;
 import com.homing_labs.cq.lang.java.taxonomy.Field;
 import com.homing_labs.cq.lang.java.taxonomy.MemberClass;
-import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import com.homing_labs.cq.lang.java.taxonomy.Method;
+import com.homing_labs.cq.lang.java.taxonomy.Places;
 import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.Subordinate;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
 import com.homing_labs.cq.lang.java.taxonomy.Superinterface;
-import hue.captains.singapura.tao.ontology.Scalar;
+import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
 import java.lang.classfile.Attributes;
@@ -36,7 +36,7 @@ public record ClassScanner() implements StatelessFunctionalObject {
         final ClassModel model = ClassFile.of().parse(classFile);
         final String name = model.thisClass().asInternalName();
         final ClassKind kind = kindOf(model);
-        final Places places = placesOf(kind);
+        final Places places = Taxonomy.INSTANCE.places(kind);
         final List<Occurrence> found = new ArrayList<>();
         found.add(new Occurrence.OfClass(name, kind));
         found.add(new Occurrence.OfMember(name, places.top(), Subordinate.ClassObject.INSTANCE, name));
@@ -48,12 +48,13 @@ public record ClassScanner() implements StatelessFunctionalObject {
         model.interfaces().forEach(superinterface -> found.add(new Occurrence.OfMember(
                 name, places.top(), Superinterface.INSTANCE, superinterface.asInternalName())));
         model.fields().forEach(field -> found.add(new Occurrence.OfMember(name,
-                places.of(field.flags().has(AccessFlag.STATIC)), Field.INSTANCE, field.fieldName().stringValue())));
+                places.subordinate(field.flags().has(AccessFlag.STATIC)), Field.INSTANCE,
+                field.fieldName().stringValue())));
         model.methods().forEach(method -> found.add(member(name, model, places, method)));
         model.findAttribute(Attributes.innerClasses()).ifPresent(innerClasses -> innerClasses.classes().stream()
                 .filter(inner -> inner.outerClass().map(ClassEntry::asInternalName).filter(name::equals).isPresent())
                 .forEach(inner -> found.add(new Occurrence.OfMember(name,
-                        places.of(inner.flags().contains(AccessFlag.STATIC)), MemberClass.INSTANCE,
+                        places.subordinate(inner.flags().contains(AccessFlag.STATIC)), MemberClass.INSTANCE,
                         inner.innerClass().asInternalName()))));
         found.addAll(DependencyFinder.INSTANCE.find(model, places.top()));
         return List.copyOf(found);
@@ -83,7 +84,7 @@ public record ClassScanner() implements StatelessFunctionalObject {
         return switch (methodName) {
             case "<init>" -> new Occurrence.OfMember(name, places.top(), Constructor.INSTANCE, signature);
             case "<clinit>" -> new Occurrence.OfMember(name, places.top(), StaticInitialiser.INSTANCE, signature);
-            default -> new Occurrence.OfMember(name, places.of(method.flags().has(AccessFlag.STATIC)),
+            default -> new Occurrence.OfMember(name, places.subordinate(method.flags().has(AccessFlag.STATIC)),
                     methodKindOf(model, method), signature);
         };
     }
@@ -98,31 +99,5 @@ public record ClassScanner() implements StatelessFunctionalObject {
         final boolean ofAnInterface = model.flags().has(AccessFlag.INTERFACE);
         final boolean shared = !method.flags().has(AccessFlag.STATIC) && !method.flags().has(AccessFlag.PRIVATE);
         return ofAnInterface && shared ? Method.DefaultImplementation.INSTANCE : Method.Implementation.INSTANCE;
-    }
-
-    private Places placesOf(final ClassKind kind) {
-        return switch (kind) {
-            case ClassKind.Class _ -> new Places(MemberOf.Class.class,
-                    MemberOf.Class.ClassObject.class, MemberOf.Class.Instance.class);
-            case ClassKind.AbstractClass _ -> new Places(MemberOf.AbstractClass.class,
-                    MemberOf.AbstractClass.ClassObject.class, MemberOf.AbstractClass.Instance.class);
-            case ClassKind.Interface _ -> new Places(MemberOf.Interface.class,
-                    MemberOf.Interface.ClassObject.class, MemberOf.Interface.Instance.class);
-            case ClassKind.Enum _ -> new Places(MemberOf.Enum.class,
-                    MemberOf.Enum.ClassObject.class, MemberOf.Enum.Instance.class);
-            case ClassKind.Record _ -> new Places(MemberOf.Record.class,
-                    MemberOf.Record.ClassObject.class, MemberOf.Record.Instance.class);
-            case ClassKind.Annotation _ -> new Places(MemberOf.Annotation.class,
-                    MemberOf.Annotation.ClassObject.class, MemberOf.Annotation.Instance.class);
-        };
-    }
-
-    /** Where a kind of class keeps its top-level members, and its class object's and its instances'. */
-    private record Places(Class<? extends MemberOf> top, Class<? extends MemberOf> classObject,
-                          Class<? extends MemberOf> instance) implements Scalar {
-
-        Class<? extends MemberOf> of(final boolean isStatic) {
-            return isStatic ? classObject : instance;
-        }
     }
 }

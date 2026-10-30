@@ -1,12 +1,20 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
+import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
+import com.homing_labs.cq.lang.java.taxonomy.Constructor;
+import com.homing_labs.cq.lang.java.taxonomy.Field;
 import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
+import com.homing_labs.cq.lang.java.taxonomy.Method;
+import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
+import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
+import javafx.scene.control.TableView;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import org.junit.jupiter.api.BeforeAll;
@@ -14,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BenchPaneTest {
 
     private static final String TAXONOMY = "com.homing_labs.cq.lang.java.taxonomy";
+
+    private static final String ENUM_RECORD = TAXONOMY.replace('.', '/') + "/ClassKind$Enum";
 
     @BeforeAll
     void startJavaFx() {
@@ -98,10 +109,54 @@ class BenchPaneTest {
     }
 
     @Test
+    void theSummaryHasALineForTheClassAndForEachObjectItCanHaveCounted() {
+        final ClassObjectView classObject = FxThread.INSTANCE.call(ClassObjectView::new);
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(classObject)));
+        FxThread.INSTANCE.call(() -> selectInNest(bench, "ClassKind", "Enum"));
+        final List<ClassObjectView.Line> lines = FxThread.INSTANCE.call(classObject::lines);
+        assertEquals(1 + Taxonomy.INSTANCE.placements(ClassKind.Record.INSTANCE).size(), lines.size());
+        assertEquals(new ClassObjectView.Line(ENUM_RECORD, Optional.empty(), ClassKind.Record.class, Optional.empty(),
+                1), lines.getFirst());
+        assertTrue(lines.containsAll(List.of(
+                line(MemberOf.Record.class, Constructor.class, Cardinality.OneOrMore.INSTANCE, 1),
+                line(MemberOf.Record.ClassObject.class, Field.class, Cardinality.ZeroOrMore.INSTANCE, 1),
+                line(MemberOf.Record.Instance.class, Method.Implementation.class, Cardinality.OneOrMore.INSTANCE, 3),
+                line(MemberOf.Record.Instance.class, Field.class, Cardinality.ZeroOrMore.INSTANCE, 0))),
+                lines.toString());
+        assertTrue(lines.stream().allMatch(ClassObjectView.Line::fits), lines.toString());
+    }
+
+    @Test
+    void selectingASummaryLineShowsItsInstancesBelow() {
+        final ClassObjectView classObject = FxThread.INSTANCE.call(ClassObjectView::new);
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(classObject)));
+        final List<ClassObjectView.Row> all = FxThread.INSTANCE.call(() -> {
+            selectInNest(bench, "ClassKind", "Enum");
+            return classObject.rows();
+        });
+        final List<ClassObjectView.Row> implementations = FxThread.INSTANCE.call(() -> {
+            summary(bench).getSelectionModel().select(line(MemberOf.Record.Instance.class,
+                    Method.Implementation.class, Cardinality.OneOrMore.INSTANCE, 3));
+            return classObject.rows();
+        });
+        assertEquals(List.of("equals", "hashCode", "toString"), implementations.stream()
+                .map(row -> row.name().substring(0, row.name().indexOf('('))).sorted().toList());
+        assertTrue(implementations.stream().allMatch(row -> row.place().equals("Record.Instance")
+                && row.object().equals("Method.Implementation")), implementations.toString());
+        final List<ClassObjectView.Row> again = FxThread.INSTANCE.call(() -> {
+            summary(bench).getSelectionModel().clearSelection();
+            return classObject.rows();
+        });
+        assertEquals(all, again);
+        assertTrue(all.size() > implementations.size());
+    }
+
+    @Test
     void everyTypeOfTheBenchSaysWhatItIsAndIsHeldToIt() {
         for (final Class<?> type : List.of(ClasspathUnits.class, Selection.class, IndexEntry.class,
                 IndexEntry.Package.class, IndexEntry.OfClass.class, UnitTree.class, NestIndex.class,
-                BenchView.class, ClassObjectView.class, ClassObjectView.Row.class, SourceView.class,
+                BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
+                SourceView.class,
                 BenchPane.class, BenchApp.class, Bench.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());
         }
@@ -118,6 +173,24 @@ class BenchPaneTest {
 
     private TreeView<IndexEntry> nest(final LaidOut bench) {
         return tree(bench, "#nest");
+    }
+
+    private TreeView<IndexEntry> selectInNest(final LaidOut bench, final String unit, final String nested) {
+        select(bench, unit);
+        final TreeView<IndexEntry> nest = nest(bench);
+        nest.getSelectionModel().select(child(nest.getRoot(), nested));
+        return nest;
+    }
+
+    @SuppressWarnings("unchecked")
+    private TableView<ClassObjectView.Line> summary(final LaidOut bench) {
+        return (TableView<ClassObjectView.Line>) bench.root().lookup("#summary");
+    }
+
+    /** A line of the summary for {@code ClassKind.Enum}, a record. */
+    private ClassObjectView.Line line(final Class<? extends MemberOf> place, final Class<? extends ObjectKind> object,
+                                      final Cardinality cardinality, final long count) {
+        return new ClassObjectView.Line(ENUM_RECORD, Optional.of(place), object, Optional.of(cardinality), count);
     }
 
     @SuppressWarnings("unchecked")

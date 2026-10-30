@@ -1,13 +1,21 @@
 package com.homing_labs.cq.bench;
 
+import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
+import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
+import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
+import com.homing_labs.cq.lang.java.taxonomy.Placement;
+import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import com.homing_labs.cq.lang.java.taxonomy.scan.ClassScanner;
 import com.homing_labs.cq.lang.java.taxonomy.scan.Occurrence;
 import hue.captains.singapura.tao.ontology.Scalar;
-import javafx.beans.property.ReadOnlyStringWrapper;
+import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableColumn;
+import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.layout.BorderPane;
 
@@ -17,26 +25,58 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
- * Measures the class object: every object of the taxonomy in the class files of the selection - the class, its members
- * in their places, its dependencies - as {@link ClassScanner} finds them, a row each, sortable by any column.
+ * Measures the class object, from the class files of the selection alone, in two parts. Above, a summary: a line for
+ * each class, and one for each object the taxonomy lets a class of its kind have, in each place it can be - with how
+ * many a class can have there, how many it has, and whether the two agree. Below, the instances found: those of the
+ * summary line selected, or every one with no line selected.
  */
 public final class ClassObjectView implements BenchView {
 
-    private final TableView<Row> table = new TableView<>();
+    private final TableView<Line> summary = new TableView<>();
 
-    private final Label summary = new Label();
+    private final TableView<Row> details = new TableView<>();
+
+    private final Label caption = new Label();
 
     private final BorderPane pane = new BorderPane();
 
+    /** The instances found in the selection's class files. */
+    private List<Occurrence> found = List.of();
+
     public ClassObjectView() {
-        table.getColumns().addAll(List.of(column("Class", Row::type, 170), column("Place", Row::place, 170),
-                column("Object", Row::object, 200), column("Name", Row::name, 440)));
-        table.setPlaceholder(new Label("Nothing selected"));
-        summary.setPadding(new Insets(6, 8, 6, 8));
-        pane.setTop(summary);
-        pane.setCenter(table);
+        summary.setId("summary");
+        summary.getColumns().add(column("Class", (Line line) -> shortName(line.inClass()), 170));
+        summary.getColumns().add(column("Place", (Line line) -> line.place().map(this::placeName).orElse("-"), 170));
+        summary.getColumns().add(column("Object", (Line line) -> kindName(line.object()), 200));
+        summary.getColumns().add(column("Cardinality",
+                (Line line) -> line.cardinality().map(allowed -> allowed.getClass().getSimpleName()).orElse("-"), 110));
+        summary.getColumns().add(column("Count", Line::count, 70));
+        summary.getColumns().add(column("Fits", (Line line) -> line.fits() ? "yes" : "no", 60));
+        summary.setRowFactory(table -> new TableRow<>() {
+            @Override
+            protected void updateItem(final Line line, final boolean empty) {
+                super.updateItem(line, empty);
+                setStyle(line != null && !line.fits() ? "-fx-background-color: #f6d5d5;" : "");
+            }
+        });
+        summary.setPlaceholder(new Label("Nothing selected"));
+        summary.getSelectionModel().selectedItemProperty()
+                .addListener((observed, before, line) -> details.getItems().setAll(rows(Optional.ofNullable(line))));
+        details.setId("details");
+        details.getColumns().add(column("Class", Row::type, 170));
+        details.getColumns().add(column("Place", Row::place, 170));
+        details.getColumns().add(column("Object", Row::object, 200));
+        details.getColumns().add(column("Name", Row::name, 440));
+        details.setPlaceholder(new Label("No instances"));
+        caption.setPadding(new Insets(6, 8, 6, 8));
+        final SplitPane split = new SplitPane(summary, details);
+        split.setOrientation(Orientation.VERTICAL);
+        split.setDividerPositions(0.5);
+        pane.setTop(caption);
+        pane.setCenter(split);
     }
 
     @Override
@@ -51,30 +91,59 @@ public final class ClassObjectView implements BenchView {
 
     @Override
     public void show(final Optional<Selection> selection) {
-        selection.ifPresentOrElse(selected -> {
-            final List<Occurrence> found = selected.classes().stream()
-                    .flatMap(type -> ClassScanner.INSTANCE.scan(classFile(type)).stream())
-                    .toList();
-            table.getItems().setAll(found.stream().map(this::row).toList());
-            summary.setText(found.size() + " objects of "
-                    + found.stream().map(occurrence -> occurrence.kind().getClass()).distinct().count() + " kinds in "
-                    + selected.classes().size() + (selected.classes().size() == 1 ? " class" : " classes")
-                    + ", read from the class files alone");
-        }, () -> {
-            table.getItems().clear();
-            summary.setText("Select a unit, or a class nested in one, to see the objects in its class files.");
-        });
+        found = selection.map(selected -> selected.classes().stream()
+                        .flatMap(type -> ClassScanner.INSTANCE.scan(classFile(type)).stream())
+                        .toList())
+                .orElse(List.of());
+        final List<Line> lines = summarise();
+        summary.getItems().setAll(lines);
+        details.getItems().setAll(rows(Optional.empty()));
+        caption.setText(selection.map(selected -> {
+            final long misfits = lines.stream().filter(line -> !line.fits()).count();
+            return found.size() + " objects in " + selected.classes().size()
+                    + (selected.classes().size() == 1 ? " class" : " classes") + ", read from the class files alone - "
+                    + (misfits == 0 ? "every count fits its cardinality"
+                    : misfits + (misfits == 1 ? " count does" : " counts do") + " not fit its cardinality");
+        }).orElse("Select a unit, or a class nested in one, to see the objects in its class files."));
     }
 
-    /** The rows shown. */
+    /** The summary's lines. */
+    public List<Line> lines() {
+        return List.copyOf(summary.getItems());
+    }
+
+    /** The instances shown below the summary. */
     public List<Row> rows() {
-        return List.copyOf(table.getItems());
+        return List.copyOf(details.getItems());
     }
 
-    private TableColumn<Row, String> column(final String title, final Function<Row, String> value,
-                                            final double width) {
-        final TableColumn<Row, String> column = new TableColumn<>(title);
-        column.setCellValueFactory(cell -> new ReadOnlyStringWrapper(value.apply(cell.getValue())));
+    /** A line for each class found, and one for each object it can have in each of its places, counted. */
+    private List<Line> summarise() {
+        return found.stream()
+                .flatMap(occurrence -> occurrence instanceof Occurrence.OfClass type ? Stream.of(type) : Stream.empty())
+                .flatMap(type -> Stream.concat(
+                        Stream.of(new Line(type.name(), Optional.empty(), type.kind().getClass(), Optional.empty(), 0)),
+                        Taxonomy.INSTANCE.placements(type.kind()).stream()
+                                .map(placement -> line(type.name(), placement))))
+                .map(line -> line.counted(found))
+                .toList();
+    }
+
+    private Line line(final String inClass, final Placement placement) {
+        return new Line(inClass, Optional.of(placement.place()), placement.object(),
+                Optional.of(placement.cardinality()), 0);
+    }
+
+    private List<Row> rows(final Optional<Line> line) {
+        return found.stream()
+                .filter(occurrence -> line.map(selected -> selected.holds(occurrence)).orElse(true))
+                .map(this::row)
+                .toList();
+    }
+
+    private <T, V> TableColumn<T, V> column(final String title, final Function<T, V> value, final double width) {
+        final TableColumn<T, V> column = new TableColumn<>(title);
+        column.setCellValueFactory(cell -> new ReadOnlyObjectWrapper<>(value.apply(cell.getValue())));
         column.setPrefWidth(width);
         return column;
     }
@@ -116,7 +185,34 @@ public final class ClassObjectView implements BenchView {
         }
     }
 
-    /** A row of the table: the class an object was found in, its place there, the object, and its name. */
+    /**
+     * A line of the summary: a class itself, with no place, or an object in one of its places - with how many of it a
+     * class can have there, and how many it has.
+     */
+    public record Line(String inClass, Optional<Class<? extends MemberOf>> place, Class<? extends ObjectKind> object,
+                       Optional<Cardinality> cardinality, long count) implements Scalar {
+
+        /** Whether the count is one the cardinality allows; a class itself always fits. */
+        public boolean fits() {
+            return cardinality.map(allowed -> allowed.allows(count)).orElse(true);
+        }
+
+        /** Whether an instance found is one of this line's. */
+        public boolean holds(final Occurrence occurrence) {
+            return switch (occurrence) {
+                case Occurrence.OfClass type -> place.isEmpty() && type.name().equals(inClass);
+                case Occurrence.OfMember member -> place.isPresent() && member.place() == place.get()
+                        && member.inClass().equals(inClass) && member.kind().getClass() == object;
+            };
+        }
+
+        /** This line, with the instances among those found counted. */
+        public Line counted(final List<Occurrence> found) {
+            return new Line(inClass, place, object, cardinality, found.stream().filter(this::holds).count());
+        }
+    }
+
+    /** A row of the instances: the class an object was found in, its place there, the object, and its name. */
     public record Row(String type, String place, String object, String name) implements Scalar {
     }
 }
