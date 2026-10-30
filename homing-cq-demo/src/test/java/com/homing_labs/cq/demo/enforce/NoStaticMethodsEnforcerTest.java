@@ -9,9 +9,10 @@ import com.homing_labs.cq.demo.samples.StaticHelper;
 import com.homing_labs.cq.enforcer.def.Findings;
 import com.homing_labs.cq.enforcer.def.Result;
 import com.homing_labs.cq.lang.java.def.JavaMethod;
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.def.JavaUnits;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,7 +45,7 @@ class NoStaticMethodsEnforcerTest {
     }
 
     private Result<JavaLang, NoStaticMethods> check(final Class<?> type) {
-        return NoStaticMethodsEnforcer.INSTANCE.check(new JavaUnit.ClassOnly(type));
+        return NoStaticMethodsEnforcer.INSTANCE.check(JavaUnits.INSTANCE.of(type, Optional.empty()));
     }
 
     private Result<JavaLang, NoStaticMethods> found(final StaticMethod... methods) {

@@ -2,6 +2,7 @@ package com.homing_labs.cq.lang.java.extract;
 
 import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.def.JavaUnits;
 import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
@@ -21,7 +22,8 @@ import java.util.stream.Stream;
 
 /**
  * Reads the units of a module: every top-level class compiled into its code base, each loaded by its name without
- * being initialised, and paired with the source file that declares it when the code base has sources.
+ * being initialised, made a unit of its kind, and paired with the source file that declares it when the code base has
+ * sources.
  *
  * <p>Build-time code: this is where classes are loaded by name. Each class file is first read with the Class-File API,
  * to tell a top-level class from a nested one and to learn which file declares it (its {@code SourceFile}), so only
@@ -92,11 +94,10 @@ public record JavaUnitReader() implements StatelessFunctionalObject {
 
     private JavaUnit unit(final TopLevelClass found, final Optional<Path> sources, final ClassLoader loader) {
         final Class<?> type = load(found.binaryName(), loader);
-        return sources
+        return JavaUnits.INSTANCE.of(type, sources
                 .map(root -> root.resolve(found.packagePath()).resolve(found.sourceFile()))
                 .filter(Files::isRegularFile)
-                .<JavaUnit>map(file -> new JavaUnit.WithSource(type, new JavaSource(file.toUri(), text(file))))
-                .orElseGet(() -> new JavaUnit.ClassOnly(type));
+                .map(file -> new JavaSource(file.toUri(), text(file))));
     }
 
     private Class<?> load(final String binaryName, final ClassLoader loader) {

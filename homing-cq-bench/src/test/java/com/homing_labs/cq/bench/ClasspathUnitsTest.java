@@ -26,7 +26,7 @@ class ClasspathUnitsTest {
 
     @Test
     void aModuleOnTheClasspathHasItsSourcesFound() {
-        assertTrue(units.stream().allMatch(unit -> unit instanceof JavaUnit.WithSource), units.toString());
+        assertTrue(units.stream().allMatch(unit -> unit.source().isPresent()), units.toString());
     }
 
     @Test

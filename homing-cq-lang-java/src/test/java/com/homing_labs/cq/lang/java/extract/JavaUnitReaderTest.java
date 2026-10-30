@@ -1,5 +1,6 @@
 package com.homing_labs.cq.lang.java.extract;
 
+import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.def.JavaUnit;
 import com.homing_labs.cq.lang.java.fixtures.Plain;
 import org.junit.jupiter.api.Test;
@@ -21,7 +22,6 @@ import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,23 +54,33 @@ class JavaUnitReaderTest {
     @Test
     void pairsEachClassWithTheFileThatDeclaresIt() {
         for (final JavaUnit unit : units) {
-            final JavaUnit.WithSource withSource = assertInstanceOf(JavaUnit.WithSource.class, unit,
-                    unit.type().getName() + " was read without its source");
+            assertTrue(unit.source().isPresent(), unit.type().getName() + " was read without its source");
+            final JavaSource source = unit.source().orElseThrow();
             final String simpleName = unit.type().getSimpleName();
             final String fileName = simpleName.equals("SecondInFile") ? "TwoInOneFile.java" : simpleName + ".java";
             final String path = unit.type().getPackageName().replace('.', '/') + "/" + fileName;
-            assertTrue(withSource.source().file().getPath().endsWith(path),
-                    unit.type().getName() + " was paired with " + withSource.source().file());
+            assertTrue(source.file().getPath().endsWith(path),
+                    unit.type().getName() + " was paired with " + source.file());
             assertTrue(Pattern.compile("\\b(class|interface|enum|record)\\s+" + simpleName + "\\b")
-                            .matcher(withSource.source().text()).find(),
+                            .matcher(source.text()).find(),
                     unit.type().getName() + "'s source does not declare it");
         }
     }
 
     @Test
+    void eachUnitIsOfItsClassKind() {
+        assertEquals(List.of(JavaUnit.OfClass.class, JavaUnit.OfInterface.class, JavaUnit.OfEnum.class,
+                        JavaUnit.OfRecord.class, JavaUnit.OfAnnotation.class),
+                Stream.of("Plain", "AnInterface", "AnEnum", "ARecord", "AnAnnotation")
+                        .map(name -> unit(name).getClass())
+                        .toList());
+    }
+
+    @Test
     void aSecondTopLevelClassInAFileIsItsOwnUnitSharingThatFile() {
-        final JavaUnit.WithSource first = assertInstanceOf(JavaUnit.WithSource.class, unit("TwoInOneFile"));
-        final JavaUnit.WithSource second = assertInstanceOf(JavaUnit.WithSource.class, unit("SecondInFile"));
+        final JavaUnit first = unit("TwoInOneFile");
+        final JavaUnit second = unit("SecondInFile");
+        assertTrue(first.source().isPresent());
         assertEquals(first.source(), second.source());
     }
 
@@ -107,7 +117,7 @@ class JavaUnitReaderTest {
     }
 
     @Test
-    void aJarWithNoSourcesBesideItGivesClassOnlyUnits(@TempDir final Path temp) throws Exception {
+    void aJarWithNoSourcesBesideItGivesUnitsWithoutSources(@TempDir final Path temp) throws Exception {
         final Path jar = copyOfFixturesAsJar(temp.resolve("fixtures.jar"));
         try (URLClassLoader loader = new URLClassLoader(new URL[]{jar.toUri().toURL()},
                 ClassLoader.getPlatformClassLoader())) {
@@ -116,7 +126,7 @@ class JavaUnitReaderTest {
 
             assertEquals(names(units), names(fromJar));
             for (final JavaUnit unit : fromJar) {
-                assertInstanceOf(JavaUnit.ClassOnly.class, unit, unit.type().getName() + " found a source");
+                assertTrue(unit.source().isEmpty(), unit.type().getName() + " found a source");
                 assertEquals(loader, unit.type().getClassLoader(),
                         unit.type().getName() + " was not loaded from the jar");
             }

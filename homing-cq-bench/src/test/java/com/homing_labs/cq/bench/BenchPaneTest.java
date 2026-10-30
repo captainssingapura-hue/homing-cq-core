@@ -1,6 +1,6 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.def.JavaUnits;
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.Constructor;
@@ -37,6 +37,8 @@ class BenchPaneTest {
 
     private static final String ENUM_RECORD = TAXONOMY.replace('.', '/') + "/ClassKind$Enum";
 
+    private static final String RULES = "com.homing_labs.cq.bench.rules";
+
     @BeforeAll
     void startJavaFx() {
         FxThread.INSTANCE.start();
@@ -53,8 +55,8 @@ class BenchPaneTest {
 
     @Test
     void theNestIndexHoldsEachClassUnderTheClassItIsDeclaredIn() {
-        final TreeItem<IndexEntry> memberOf =
-                FxThread.INSTANCE.call(() -> NestIndex.INSTANCE.of(new JavaUnit.ClassOnly(MemberOf.class)));
+        final TreeItem<IndexEntry> memberOf = FxThread.INSTANCE.call(
+                () -> NestIndex.INSTANCE.of(JavaUnits.INSTANCE.of(MemberOf.class, Optional.empty())));
         assertEquals("MemberOf", memberOf.getValue().toString());
         assertEquals(List.of("AbstractClass", "Annotation", "Class", "Enum", "Interface", "Record"), labels(memberOf));
         assertEquals(List.of("ClassObject", "Instance"), labels(child(memberOf, "Class")));
@@ -62,8 +64,8 @@ class BenchPaneTest {
 
     @Test
     void theNestIndexNamesLocalAndAnonymousClasses() {
-        final TreeItem<IndexEntry> fixture =
-                FxThread.INSTANCE.call(() -> NestIndex.INSTANCE.of(new JavaUnit.ClassOnly(NestFixture.class)));
+        final TreeItem<IndexEntry> fixture = FxThread.INSTANCE.call(
+                () -> NestIndex.INSTANCE.of(JavaUnits.INSTANCE.of(NestFixture.class, Optional.empty())));
         assertEquals(List.of("anonymous 1", "Local (local)", "Inner", "Nested"), labels(fixture));
         assertEquals(List.of("Deeper"), labels(child(fixture, "Inner")));
     }
@@ -152,11 +154,45 @@ class BenchPaneTest {
     }
 
     @Test
+    void theRulesAppliedAreThoseForEveryUnitAndForTheUnitsKind() {
+        final RulesView rules =
+                FxThread.INSTANCE.call(() -> new RulesView(BenchPaneTest.class.getClassLoader(), RULES));
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(rules)));
+        assertEquals(List.of("EveryUnitIsSeen", "InterfacesAreSeen"), FxThread.INSTANCE.call(() -> {
+            select(bench, "ClassKind");
+            return ruleNames(rules.applied());
+        }));
+        assertEquals(List.of("EveryUnitIsSeen"), FxThread.INSTANCE.call(() -> {
+            select(bench, "Places");
+            return ruleNames(rules.applied());
+        }));
+    }
+
+    @Test
+    void selectingARuleShowsItsFindings() {
+        final RulesView rules =
+                FxThread.INSTANCE.call(() -> new RulesView(BenchPaneTest.class.getClassLoader(), RULES));
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(rules)));
+        final List<String> findings = FxThread.INSTANCE.call(() -> {
+            select(bench, "ClassKind");
+            @SuppressWarnings("unchecked") final TableView<RulesView.Applied> table =
+                    (TableView<RulesView.Applied>) bench.root().lookup("#rules");
+            table.getSelectionModel().select(table.getItems().stream()
+                    .filter(applied -> applied.signature().rule().getSimpleName().equals("InterfacesAreSeen"))
+                    .findFirst().orElseThrow());
+            return rules.findings();
+        });
+        assertEquals(List.of("Seen[unit=ClassKind]"), findings);
+        assertEquals(List.of("1", "1"), FxThread.INSTANCE.call(
+                () -> rules.applied().stream().map(RulesView.Applied::outcome).toList()));
+    }
+
+    @Test
     void everyTypeOfTheBenchSaysWhatItIsAndIsHeldToIt() {
         for (final Class<?> type : List.of(ClasspathUnits.class, Selection.class, IndexEntry.class,
                 IndexEntry.Package.class, IndexEntry.OfClass.class, UnitTree.class, NestIndex.class,
                 BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
-                SourceView.class,
+                SourceView.class, ClasspathEnforcers.class, RulesView.class, RulesView.Applied.class,
                 BenchPane.class, BenchApp.class, Bench.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());
         }
@@ -202,6 +238,10 @@ class BenchPaneTest {
         return item.getChildren().stream()
                 .filter(child -> child.getValue().toString().equals(label))
                 .findFirst().orElseThrow();
+    }
+
+    private List<String> ruleNames(final List<RulesView.Applied> applied) {
+        return applied.stream().map(rule -> rule.signature().rule().getSimpleName()).toList();
     }
 
     private List<String> labels(final TreeItem<IndexEntry> item) {

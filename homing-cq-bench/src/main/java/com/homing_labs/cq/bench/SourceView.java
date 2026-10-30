@@ -1,6 +1,5 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.layout.StackPane;
@@ -36,12 +35,11 @@ public final class SourceView implements BenchView {
 
     @Override
     public void show(final Optional<Selection> selection) {
-        message.setText("Source-based measurements will come with the parser." + selection.map(selected ->
-                switch (selected.unit()) {
-                    case JavaUnit.WithSource unit -> "\n\nSource of " + unit.type().getSimpleName() + ": "
-                            + Path.of(unit.source().file());
-                    case JavaUnit.ClassOnly unit -> "\n\nNo source was found for " + unit.type().getSimpleName() + ".";
-                }).orElse(""));
+        message.setText("Source-based measurements will come with the parser." + selection.map(Selection::unit)
+                .map(unit -> unit.source()
+                        .map(source -> "\n\nSource of " + unit.type().getSimpleName() + ": " + Path.of(source.file()))
+                        .orElse("\n\nNo source was found for " + unit.type().getSimpleName() + "."))
+                .orElse(""));
     }
 
     /** The message shown. */

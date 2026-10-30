@@ -35,11 +35,12 @@ class OwnModuleTest {
                         "com.homing_labs.cq.lang.java.def.JavaType",
                         "com.homing_labs.cq.lang.java.def.JavaTypes",
                         "com.homing_labs.cq.lang.java.def.JavaUnit",
+                        "com.homing_labs.cq.lang.java.def.JavaUnits",
                         "com.homing_labs.cq.lang.java.extract.JavaCodeBase",
                         "com.homing_labs.cq.lang.java.extract.JavaCodeBases",
                         "com.homing_labs.cq.lang.java.extract.JavaUnitReader"),
                 units.stream().map(unit -> unit.type().getName()).toList());
-        assertTrue(units.stream().allMatch(unit -> unit instanceof JavaUnit.WithSource));
+        assertTrue(units.stream().allMatch(unit -> unit.source().isPresent()));
     }
 
     @Test
