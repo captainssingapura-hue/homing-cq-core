@@ -16,6 +16,7 @@
         <module>homing-cq-lang-java</module>
         <module>homing-cq-lang-java-fixtures</module>
         <module>homing-cq-lang-java-taxonomy</module>
+        <module>homing-cq-bench</module>
         <module>homing-cq-demo</module>
     </modules>
 
