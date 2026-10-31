@@ -4,8 +4,9 @@ import com.homing_labs.cq.lang.java.lexer.TokenStream;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
 /**
- * Reads the top level of an ordinary compilation unit (JLS 7.3) from its tokens: its package declaration, its imports
- * and its types, with each type's header read in full and its body left as tokens for a later stage.
+ * Reads an ordinary compilation unit (JLS 7.3) from its tokens: its package declaration, its imports and its types,
+ * each type's header in full, and its body down to its parts - each member's header in full, and what follows it, a
+ * method's body or a member type's, left as tokens for a later stage.
  *
  * <p>Nothing stops it. What breaks the grammar is a diagnostic, and the reading goes on from the next token a part can
  * start with. A module declaration, or a method or a field outside any class - the other two forms a compilation

@@ -193,7 +193,7 @@ class JavaOutlinerTest {
         assertTrue(info.packageDeclaration().orElseThrow().doc().isPresent());
         assertEquals(List.of(), diagnostics(info));
 
-        final Outline other = outline("A.java", text);
+        final Outline other = outline("A.java", text + "class A {}\n");
         assertEquals(Optional.empty(), other.packageDeclaration().orElseThrow().doc());
         assertEquals(List.of(
                         "Warning documentation comment is not attached to any declaration: /** The package. */",
