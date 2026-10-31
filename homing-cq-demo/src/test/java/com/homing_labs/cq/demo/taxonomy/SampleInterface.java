@@ -2,6 +2,7 @@ package com.homing_labs.cq.demo.taxonomy;
 
 import java.net.HttpURLConnection;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -11,8 +12,9 @@ import java.util.function.Supplier;
  *     <li>static initialiser: for {@code NAMES}, whose initialiser is not a constant</li>
  *     <li>class object - fields: {@code NAMES} and {@code OK}; implementation: {@code known}; member class:
  *     {@code Names}</li>
- *     <li>instances - declaration: {@code name}; default implementation: {@code get}; implementation, private:
- *     {@code key}</li>
+ *     <li>instances - declaration: {@code name}; default implementations: {@code get}, and {@code as}, generic in
+ *     what it makes, through a function that takes {@code ? super} this and gives {@code ? extends} it;
+ *     implementation, private: {@code key}</li>
  *     <li>in its code - local class: the enum {@code Casing}; anonymous class: a {@link Supplier}; both in
  *     {@code get}</li>
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
@@ -45,6 +47,10 @@ public sealed interface SampleInterface<T> extends Supplier<String> permits Samp
             }
         };
         return Casing.LOWER.ordinal() == 0 ? keyed.get() : name();
+    }
+
+    default <R> R as(final Function<? super SampleInterface<T>, ? extends R> making) {
+        return making.apply(this);
     }
 
     private String key() {

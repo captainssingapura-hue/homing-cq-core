@@ -1,17 +1,21 @@
 package com.homing_labs.cq.demo.taxonomy;
 
 import java.net.HttpURLConnection;
+import java.util.Collection;
 
 /**
  * A concrete class with every object of the taxonomy a class can have:
  * <ul>
  *     <li>type parameter: {@code T}; superclass: {@link SampleAbstractClass}, given {@code T}; superinterface:
  *     {@link Runnable}</li>
- *     <li>constructors: two; static initialiser: the static block</li>
- *     <li>class object - fields: {@code KIND} and {@code OK}; implementation: {@code of}; native implementation:
- *     {@code clock}; member classes: {@code Builder} and {@code Special}</li>
- *     <li>instances - field: {@code size}; implementations: {@code name}, {@code size} and {@code run}; native
- *     implementation: {@code peek}; member class: {@code View}</li>
+ *     <li>constructors: three, one of them generic, with a type parameter bounded by {@code T}, and taking an array
+ *     of it; static initialiser: the static block</li>
+ *     <li>class object - fields: {@code KIND} and {@code OK}; implementations: {@code of}, and {@code count}, which
+ *     takes a collection of {@code ?}; native implementation: {@code clock}; member classes: {@code Builder} and
+ *     {@code Special}</li>
+ *     <li>instances - field: {@code size}; implementations: {@code name}, {@code size}, {@code run}, and
+ *     {@code view}, whose type is a {@code View} of the {@code SampleClass} of {@code T}; native implementation:
+ *     {@code peek}; member class: {@code View}, generic, its type parameter bounded by two interfaces</li>
  *     <li>in its code - local class: {@code Step}; anonymous class: one; both in {@code run}</li>
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
  *     nesting, a permitted subclass ({@code Special}) and an inlined constant ({@link HttpURLConnection#HTTP_OK})</li>
@@ -39,8 +43,16 @@ public sealed class SampleClass<T> extends SampleAbstractClass<T> implements Run
         this(id, 0);
     }
 
+    public <S extends T> SampleClass(final String id, final S[] seeds) {
+        this(id, seeds.length);
+    }
+
     static SampleClass<String> of(final String id) {
         return new SampleClass<>(id);
+    }
+
+    static int count(final Collection<?> items) {
+        return items.size();
     }
 
     static native long clock();
@@ -66,10 +78,14 @@ public sealed class SampleClass<T> extends SampleAbstractClass<T> implements Run
 
     native int peek();
 
+    View<String> view() {
+        return new View<>();
+    }
+
     static class Builder {
     }
 
-    class View {
+    class View<V extends CharSequence & Comparable<V>> {
     }
 
     static final class Special extends SampleClass<String> {

@@ -1,6 +1,7 @@
 package com.homing_labs.cq.demo.taxonomy;
 
 import java.net.HttpURLConnection;
+import java.util.function.Supplier;
 
 /**
  * An abstract class with every object of the taxonomy an abstract class can have:
@@ -10,8 +11,9 @@ import java.net.HttpURLConnection;
  *     <li>constructor: one; static initialiser: the static block</li>
  *     <li>class object - fields: {@code PREFIX} and {@code OK}; implementation: {@code prefixed}; native
  *     implementation: {@code ticks}; member class: {@code Registry}</li>
- *     <li>instances - field: {@code id}; declaration: {@code size}; implementation: {@code label}; native
- *     implementation: {@code hash}; member class: {@code Part}</li>
+ *     <li>instances - field: {@code id}; declaration: {@code size}; implementations: {@code label}, and
+ *     {@code require}, which throws its own type parameter; native implementation: {@code hash}; member class:
+ *     {@code Part}</li>
  *     <li>in its code - local class: the interface {@code Labeller}; anonymous class: one that implements it; both in
  *     {@code label}</li>
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
@@ -55,6 +57,12 @@ public abstract sealed class SampleAbstractClass<T> implements SampleInterface<T
             }
         };
         return labeller.label(id);
+    }
+
+    <X extends Exception> void require(final boolean holds, final Supplier<? extends X> failure) throws X {
+        if (!holds) {
+            throw failure.get();
+        }
     }
 
     native int hash();
