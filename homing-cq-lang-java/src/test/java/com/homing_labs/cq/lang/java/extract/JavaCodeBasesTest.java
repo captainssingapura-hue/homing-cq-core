@@ -23,6 +23,16 @@ class JavaCodeBasesTest {
     }
 
     @Test
+    void findsTestSourcesBesideATestClassesFolder(@TempDir final Path module) throws IOException {
+        final Path classes = Files.createDirectories(module.resolve("target/test-classes"));
+        Files.createDirectories(module.resolve("src/main/java"));
+        final Path sources = Files.createDirectories(module.resolve("src/test/java"));
+
+        assertEquals(new JavaCodeBase(classes.toUri(), Optional.of(sources.toUri())),
+                JavaCodeBases.INSTANCE.at(classes));
+    }
+
+    @Test
     void findsSourcesBesideAJarBuiltInTarget(@TempDir final Path module) throws IOException {
         Files.createDirectories(module.resolve("target"));
         final Path jar = Files.createFile(module.resolve("target/module-1.0.jar"));

@@ -1,5 +1,6 @@
 package com.homing_labs.cq.bench;
 
+import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
@@ -32,6 +33,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import java.net.URI;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -133,7 +136,32 @@ class BenchPaneTest {
         assertTrue(rows.stream().anyMatch(row -> row.type().equals("ClassKind$Enum")
                 && row.object().equals("StaticField") && row.name().startsWith("INSTANCE: ClassKind$Enum - public")),
                 rows.toString());
-        assertTrue(FxThread.INSTANCE.call(source::text).contains("Source of ClassKind: "));
+        assertTrue(FxThread.INSTANCE.call(source::caption).startsWith("Source of ClassKind, "));
+        assertTrue(FxThread.INSTANCE.call(source::text).contains("public sealed interface ClassKind extends"));
+    }
+
+    @Test
+    void theSourceTabShowsTheFileThatDeclaresTheUnitOrSaysThereIsNone() {
+        final SourceView source = FxThread.INSTANCE.call(SourceView::new);
+        final URI file = URI.create("file:///sources/NestFixture.java");
+        final String text = "class NestFixture {\n\n    class Inner {\n    }\n}\n";
+        final JavaUnit unit = JavaUnits.INSTANCE.of(NestFixture.class, Optional.of(new JavaSource(file, text)));
+        final String caption = "Source of NestFixture, 5 lines: " + Path.of(file);
+        assertEquals(List.of(caption, text), shown(source, Optional.of(new Selection(unit, NestFixture.class))));
+        assertEquals(List.of(caption, text), shown(source, Optional.of(new Selection(unit, NestFixture.Inner.class))),
+                "a nested class is in its unit's file");
+        assertEquals(List.of("No source was found for NestFixture.", ""), shown(source, Optional.of(
+                new Selection(JavaUnits.INSTANCE.of(NestFixture.class, Optional.empty()), NestFixture.class))));
+        assertEquals(List.of("Select a unit, or a class nested in one, to see the source file that declares it.", ""),
+                shown(source, Optional.empty()));
+    }
+
+    /** What the Source tab shows for a selection: its caption, and the source. */
+    private List<String> shown(final SourceView source, final Optional<Selection> selection) {
+        return FxThread.INSTANCE.call(() -> {
+            source.show(selection);
+            return List.of(source.caption(), source.text());
+        });
     }
 
     @Test

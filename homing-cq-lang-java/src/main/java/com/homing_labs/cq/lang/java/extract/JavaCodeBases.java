@@ -11,7 +11,8 @@ import java.util.Optional;
 /**
  * Finds a module's code base from one of its classes - the anchor - by the anchor's code source, and the module's
  * sources by Maven's layout: {@code <module>/target/classes}, or a jar in {@code <module>/target}, has its sources in
- * {@code <module>/src/main/java}. Classes anywhere else, such as a jar in a repository, have no sources.
+ * {@code <module>/src/main/java}, and {@code <module>/target/test-classes} has them in {@code <module>/src/test/java}.
+ * Classes anywhere else, such as a jar in a repository, have no sources.
  *
  * <p>The anchor is named by the code that checks the module; the module itself knows nothing of this.</p>
  */
@@ -47,11 +48,13 @@ public record JavaCodeBases() implements StatelessFunctionalObject {
         }
         final String name = absolute.getFileName().toString();
         final boolean classesFolder = Files.isDirectory(absolute) && name.equals("classes");
+        final boolean testClassesFolder = Files.isDirectory(absolute) && name.equals("test-classes");
         final boolean builtJar = Files.isRegularFile(absolute) && name.endsWith(".jar");
-        if (!classesFolder && !builtJar) {
+        if (!classesFolder && !testClassesFolder && !builtJar) {
             return Optional.empty();
         }
-        final Path sources = target.getParent().resolve("src").resolve("main").resolve("java");
+        final Path sources = target.getParent().resolve("src").resolve(testClassesFolder ? "test" : "main")
+                .resolve("java");
         return Files.isDirectory(sources) ? Optional.of(sources) : Optional.empty();
     }
 }
