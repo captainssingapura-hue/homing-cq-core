@@ -9,8 +9,8 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * The taxonomy read from its own types: the objects it declares, and which of them each kind of class can have, with
- * how many. The types are the one statement of it; this only reads them.
+ * The taxonomy read from its own types: the objects it declares, the kinds they are sealed into, and which of them each
+ * kind of class can have, with how many. The types are the one statement of it; this only reads them.
  */
 public record Taxonomy() implements StatelessFunctionalObject {
 
@@ -21,6 +21,21 @@ public record Taxonomy() implements StatelessFunctionalObject {
         return leaves(ObjectKind.class).stream()
                 .<Class<? extends ObjectKind>>map(object -> object.asSubclass(ObjectKind.class))
                 .toList();
+    }
+
+    /**
+     * The kinds a kind of the taxonomy is divided into, in the order it permits them: {@link ObjectKind}'s are the
+     * kinds below it, and an object - a kind that is not sealed - has none.
+     */
+    public List<Class<? extends ObjectKind>> permitted(final Class<? extends ObjectKind> kind) {
+        return kind.isSealed() ? Arrays.stream(kind.getPermittedSubclasses())
+                .<Class<? extends ObjectKind>>map(permitted -> permitted.asSubclass(ObjectKind.class))
+                .toList() : List.of();
+    }
+
+    /** Every kind of class, in the order the taxonomy declares them. */
+    public List<ClassKind> kinds() {
+        return leaves(ClassKind.class).stream().map(kind -> make(kind, ClassKind.class)).toList();
     }
 
     /** The interface an object implements to be a member of a kind of class. */

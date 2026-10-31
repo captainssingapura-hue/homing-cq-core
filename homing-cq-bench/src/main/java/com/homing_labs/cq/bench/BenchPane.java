@@ -23,7 +23,7 @@ import java.util.Optional;
  * The bench, as an IDE lays it out: the root package to scan at the top; on the left the tree of its units, down to
  * the top-level classes; beside it the index of the selected unit's nest; a tab for each view on the right; and what
  * the scan found at the bottom. Selecting a unit opens its nest and measures all of it; selecting a class in the nest
- * measures that class alone.
+ * measures that class alone. The tool bar also opens the taxonomy itself, in a window of its own.
  */
 public record BenchPane() implements StatelessFunctionalObject {
 
@@ -75,10 +75,14 @@ public record BenchPane() implements StatelessFunctionalObject {
         button.setOnAction(event -> scan.run());
         root.setOnAction(event -> scan.run());
         scan.run();
+        final Button taxonomy = new Button("Taxonomy");
+        taxonomy.setId("taxonomy-window");
+        taxonomy.setOnAction(event -> TaxonomyView.INSTANCE.show(taxonomy.getScene().getWindow()));
         final SplitPane split = new SplitPane(new BorderPane(units, title("Units"), null, null, null),
                 new BorderPane(nest, nestTitle, null, null, null), tabs);
         split.setDividerPositions(0.2, 0.38);
-        return new BorderPane(split, new ToolBar(new Label("Root package"), root, button), null, status, null);
+        return new BorderPane(split, new ToolBar(new Label("Root package"), root, button, taxonomy), null, status,
+                null);
     }
 
     private TreeView<IndexEntry> tree(final String id) {

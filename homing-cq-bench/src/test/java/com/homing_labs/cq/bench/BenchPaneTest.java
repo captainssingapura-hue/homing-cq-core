@@ -11,23 +11,30 @@ import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
+import com.homing_labs.cq.lang.java.taxonomy.Superinterface;
 import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeTableColumn;
+import javafx.scene.control.TreeTableView;
 import javafx.scene.control.TreeView;
 import javafx.scene.layout.HBox;
+import javafx.stage.Stage;
+import javafx.stage.Window;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -235,12 +242,78 @@ class BenchPaneTest {
     }
 
     @Test
+    void theTaxonomyWindowShowsTheKindsAsTheTreeTheyAreSealedInto() {
+        final TreeTableView<Class<? extends ObjectKind>> taxonomy =
+                FxThread.INSTANCE.call(TaxonomyView.INSTANCE::content);
+        final TreeItem<Class<? extends ObjectKind>> root = taxonomy.getRoot();
+        assertEquals(ObjectKind.class, root.getValue());
+        assertEquals(Taxonomy.INSTANCE.permitted(ObjectKind.class),
+                root.getChildren().stream().map(TreeItem::getValue).toList());
+        assertEquals(Taxonomy.INSTANCE.objects(), leaves(root), "every object once, in the taxonomy's order");
+        assertEquals(List.of("Object", "Class", "AbstractClass", "Interface", "Enum", "Record", "Annotation"),
+                taxonomy.getColumns().stream().map(TreeTableColumn::getText).toList());
+        assertEquals(List.of("Field", "0..*", "0..*", "", "0..*", "0..*", ""), row(taxonomy, Field.class));
+        assertEquals(List.of("Superinterface", "0..*", "0..*", "0..*", "0..*", "0..*", "1"),
+                row(taxonomy, Superinterface.class));
+        assertEquals(List.of("Implementation", "0..*", "0..*", "0..*", "0..*", "1..*", ""),
+                row(taxonomy, Method.Implementation.class));
+        assertEquals(List.of("ClassKind", "", "", "", "", "", ""), row(taxonomy, ClassKind.class),
+                "a kind divided into others has no cardinality of its own");
+    }
+
+    @Test
+    void theToolBarOpensOneTaxonomyWindowOverTheBench() {
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of()));
+        assertEquals("Taxonomy", FxThread.INSTANCE.call(() -> ((Button) bench.root().lookup("#taxonomy-window"))
+                .getText()));
+        final List<String> opened = FxThread.INSTANCE.call(() -> {
+            final Stage owner = new Stage();
+            owner.setScene(new Scene(new Label("bench"), 200, 100));
+            owner.show();
+            TaxonomyView.INSTANCE.show(owner);
+            TaxonomyView.INSTANCE.show(owner);
+            final List<Stage> windows = Window.getWindows().stream()
+                    .flatMap(window -> window instanceof Stage stage && stage.getOwner() == owner
+                            ? Stream.of(stage) : Stream.empty())
+                    .toList();
+            final List<String> titles = windows.stream().map(Stage::getTitle).toList();
+            windows.forEach(Stage::close);
+            owner.close();
+            return titles;
+        });
+        assertEquals(List.of("Taxonomy"), opened, "showing it again brings the one window up");
+    }
+
+    /** The objects under a kind of the taxonomy's tree, in order. */
+    private List<Class<? extends ObjectKind>> leaves(final TreeItem<Class<? extends ObjectKind>> item) {
+        return item.isLeaf() ? List.of(item.getValue())
+                : item.getChildren().stream().flatMap(child -> leaves(child).stream()).toList();
+    }
+
+    /** The cells of the taxonomy's row for a kind, as they read. */
+    private List<String> row(final TreeTableView<Class<? extends ObjectKind>> taxonomy,
+                             final Class<? extends ObjectKind> kind) {
+        return FxThread.INSTANCE.call(() -> {
+            final TreeItem<Class<? extends ObjectKind>> item = find(taxonomy.getRoot(), kind).orElseThrow();
+            return taxonomy.getColumns().stream()
+                    .map(column -> String.valueOf(column.getCellObservableValue(item).getValue()))
+                    .toList();
+        });
+    }
+
+    private Optional<TreeItem<Class<? extends ObjectKind>>> find(final TreeItem<Class<? extends ObjectKind>> item,
+                                                                  final Class<? extends ObjectKind> kind) {
+        return item.getValue() == kind ? Optional.of(item)
+                : item.getChildren().stream().flatMap(child -> find(child, kind).stream()).findFirst();
+    }
+
+    @Test
     void everyTypeOfTheBenchSaysWhatItIsAndIsHeldToIt() {
         for (final Class<?> type : List.of(ClasspathUnits.class, Selection.class, IndexEntry.class,
                 IndexEntry.Package.class, IndexEntry.OfClass.class, UnitTree.class, NestIndex.class,
                 BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
                 SourceView.class, ClasspathEnforcers.class, RulesView.class, RulesView.Applied.class, IndexCell.class,
-                ClassAttributes.class, UnitClasses.class, ValueText.class,
+                ClassAttributes.class, UnitClasses.class, ValueText.class, TaxonomyView.class,
                 Badge.class, Badges.class, Existence.TopLevel.class, Existence.StaticMember.class,
                 Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class,
                 BenchPane.class, BenchApp.class, Bench.class)) {

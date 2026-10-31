@@ -172,6 +172,16 @@ class TaxonomyTest {
     }
 
     @Test
+    void theTaxonomyReadsTheKindsEachKindIsDividedInto() {
+        assertEquals(List.of(StaticMethod.Implementation.class, StaticMethod.NativeImplementation.class),
+                Taxonomy.INSTANCE.permitted(StaticMethod.class));
+        assertEquals(List.of(), Taxonomy.INSTANCE.permitted(Field.class), "an object is divided no further");
+        assertEquals(List.of(ClassKind.Class.INSTANCE, ClassKind.AbstractClass.INSTANCE, ClassKind.Interface.INSTANCE,
+                        ClassKind.Enum.INSTANCE, ClassKind.Record.INSTANCE, ClassKind.Annotation.INSTANCE),
+                Taxonomy.INSTANCE.kinds());
+    }
+
+    @Test
     void aCardinalityAllowsTheCountsItNames() {
         assertEquals(List.of(false, true, false), allows(One.INSTANCE));
         assertEquals(List.of(true, true, false), allows(ZeroOrOne.INSTANCE));
