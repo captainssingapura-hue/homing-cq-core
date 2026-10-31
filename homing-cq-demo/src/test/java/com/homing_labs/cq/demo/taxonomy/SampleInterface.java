@@ -7,19 +7,21 @@ import java.util.function.Supplier;
 /**
  * An interface with every object of the taxonomy an interface can have:
  * <ul>
- *     <li>superinterface: {@link Supplier}</li>
+ *     <li>type parameter: {@code T}; superinterface: {@link Supplier}</li>
  *     <li>static initialiser: for {@code NAMES}, whose initialiser is not a constant</li>
  *     <li>class object - fields: {@code NAMES} and {@code OK}; implementation: {@code known}; member class:
  *     {@code Names}</li>
  *     <li>instances - declaration: {@code name}; default implementation: {@code get}; implementation, private:
  *     {@code key}</li>
+ *     <li>in its code - local class: the enum {@code Casing}; anonymous class: a {@link Supplier}; both in
+ *     {@code get}</li>
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
  *     nesting, a permitted subclass ({@link SampleAbstractClass}) and an inlined constant
  *     ({@link HttpURLConnection#HTTP_OK})</li>
  * </ul>
  */
 @SampleAnnotation("interface")
-public sealed interface SampleInterface extends Supplier<String> permits SampleAbstractClass {
+public sealed interface SampleInterface<T> extends Supplier<String> permits SampleAbstractClass {
 
     List<String> NAMES = List.of("ada", "alan");
 
@@ -33,7 +35,16 @@ public sealed interface SampleInterface extends Supplier<String> permits SampleA
 
     @Override
     default String get() {
-        return key();
+        enum Casing {
+            LOWER
+        }
+        final Supplier<String> keyed = new Supplier<>() {
+            @Override
+            public String get() {
+                return key();
+            }
+        };
+        return Casing.LOWER.ordinal() == 0 ? keyed.get() : name();
     }
 
     private String key() {

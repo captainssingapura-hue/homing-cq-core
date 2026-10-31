@@ -9,8 +9,8 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * The taxonomy read from its own types: the objects it declares, where each kind of class keeps its members, and what
- * each of those places holds, with how many. The types are the one statement of it; this only reads them.
+ * The taxonomy read from its own types: the objects it declares, and which of them each kind of class can have, with
+ * how many. The types are the one statement of it; this only reads them.
  */
 public record Taxonomy() implements StatelessFunctionalObject {
 
@@ -23,51 +23,43 @@ public record Taxonomy() implements StatelessFunctionalObject {
                 .toList();
     }
 
-    /** Where a kind of class keeps its members. */
-    public Places places(final ClassKind kind) {
+    /** The interface an object implements to be a member of a kind of class. */
+    public Class<? extends MemberOf> place(final ClassKind kind) {
         return switch (kind) {
-            case ClassKind.Class _ -> new Places(MemberOf.Class.class,
-                    MemberOf.Class.ClassObject.class, MemberOf.Class.Instance.class);
-            case ClassKind.AbstractClass _ -> new Places(MemberOf.AbstractClass.class,
-                    MemberOf.AbstractClass.ClassObject.class, MemberOf.AbstractClass.Instance.class);
-            case ClassKind.Interface _ -> new Places(MemberOf.Interface.class,
-                    MemberOf.Interface.ClassObject.class, MemberOf.Interface.Instance.class);
-            case ClassKind.Enum _ -> new Places(MemberOf.Enum.class,
-                    MemberOf.Enum.ClassObject.class, MemberOf.Enum.Instance.class);
-            case ClassKind.Record _ -> new Places(MemberOf.Record.class,
-                    MemberOf.Record.ClassObject.class, MemberOf.Record.Instance.class);
-            case ClassKind.Annotation _ -> new Places(MemberOf.Annotation.class,
-                    MemberOf.Annotation.ClassObject.class, MemberOf.Annotation.Instance.class);
+            case ClassKind.Class _ -> MemberOf.Class.class;
+            case ClassKind.AbstractClass _ -> MemberOf.AbstractClass.class;
+            case ClassKind.Interface _ -> MemberOf.Interface.class;
+            case ClassKind.Enum _ -> MemberOf.Enum.class;
+            case ClassKind.Record _ -> MemberOf.Record.class;
+            case ClassKind.Annotation _ -> MemberOf.Annotation.class;
         };
     }
 
-    /**
-     * Every object a class of this kind can have, in each place it can have it, with how many: its top-level members
-     * first, then its class object's, then its instances', each place's objects in the order the taxonomy declares
-     * them.
-     */
+    /** Every object a class of this kind can have, with how many, in the order the taxonomy declares them. */
     public List<Placement> placements(final ClassKind kind) {
-        final List<Class<? extends ObjectKind>> objects = objects();
-        return places(kind).all().stream()
-                .flatMap(place -> objects.stream().flatMap(object -> cardinality(object, place)
-                        .map(cardinality -> new Placement(place, object, cardinality)).stream()))
+        final Class<? extends MemberOf> place = place(kind);
+        return objects().stream()
+                .flatMap(object -> cardinality(object, place)
+                        .map(cardinality -> new Placement(make(object, ObjectKind.class), cardinality)).stream())
                 .toList();
     }
 
-    /** How many of an object a place has, if the object can be there at all. */
+    /** How many of an object a kind of class has, if the object can be a member of it at all. */
     private Optional<Cardinality> cardinality(final Class<?> object, final Class<?> place) {
         return Arrays.stream(object.getGenericInterfaces())
                 .flatMap(type -> type instanceof ParameterizedType generic && generic.getRawType() == place
                         ? Stream.of((Class<?>) generic.getActualTypeArguments()[0]) : Stream.empty())
-                .map(this::cardinality)
+                .map(type -> make(type, Cardinality.class))
                 .findFirst();
     }
 
-    private Cardinality cardinality(final Class<?> type) {
+    /** An instance of a stateless type of the taxonomy: any one is as good as another. */
+    private <T> T make(final Class<?> type, final Class<T> of) {
         try {
-            return type.asSubclass(Cardinality.class).getDeclaredConstructor().newInstance();
+            return type.asSubclass(of).getDeclaredConstructor().newInstance();
         } catch (final ReflectiveOperationException e) {
-            throw new IllegalStateException(type.getName() + " is not a cardinality the taxonomy can make", e);
+            throw new IllegalStateException(type.getName() + " is not a " + of.getSimpleName()
+                    + " the taxonomy can make", e);
         }
     }
 

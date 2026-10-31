@@ -13,6 +13,8 @@ import java.util.function.IntSupplier;
  *     {@code seed}; member class: {@code Table}</li>
  *     <li>instances - field: {@code order}; declaration: {@code weight}, which each constant's body implements;
  *     implementation: {@code getAsInt}; native implementation: {@code code}; member class: {@code Slot}</li>
+ *     <li>in its code - local class: the record {@code Wanted}, in {@code named}; anonymous classes: the constants'
+ *     bodies, made by the static initialiser</li>
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
  *     nesting, permitted subclasses (the constants' bodies) and an inlined constant
  *     ({@link HttpURLConnection#HTTP_OK})</li>
@@ -49,7 +51,9 @@ public enum SampleEnum implements IntSupplier {
     }
 
     static SampleEnum named(final String name) {
-        return valueOf(name.toUpperCase());
+        record Wanted(String name) {
+        }
+        return valueOf(new Wanted(name.toUpperCase()).name());
     }
 
     static native long seed();

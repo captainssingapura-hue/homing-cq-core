@@ -42,9 +42,31 @@ class ResultTest {
     }
 
     @Test
+    void aRuleThatNeedsTheSourceAndHasNoneSaysSoBesideItsFindings() {
+        final Result<JavaLang, Marking> result = new Result<JavaLang, Marking>(new Findings<>(Set.of(first)))
+                .noting(new Notice.SourceUnavailable("Page"));
+        assertEquals(new Notices(Set.of(new Notice.SourceUnavailable("Page"))), result.notices());
+        assertTrue(result.hasFindings());
+        assertEquals(new Notices(Set.of()), new Result<>(new Findings<>(Set.of(first))).notices());
+    }
+
+    @Test
+    void resultsJoinTheirFindingsAndNotices() {
+        final Result<JavaLang, Marking> whole = new Result<JavaLang, Marking>(new Findings<>(Set.of(first)))
+                .noting(new Notice.SourceUnavailable("Page"))
+                .and(new Result<JavaLang, Marking>(new Findings<>(Set.of(second)))
+                        .noting(new Notice.SourceUnavailable("Chapter")));
+        assertEquals(new Findings<>(Set.of(first, second)), whole.findings());
+        assertEquals(new Notices(Set.of(new Notice.SourceUnavailable("Page"),
+                new Notice.SourceUnavailable("Chapter"))), whole.notices());
+    }
+
+    @Test
     void findingsAndResultsHoldToTheOntology() {
         assertEquals(List.of(), new OntologyEnforcer().enforce(Findings.class));
         assertEquals(List.of(), new OntologyEnforcer().enforce(Result.class));
+        assertEquals(List.of(), new OntologyEnforcer().enforce(Notices.class));
+        assertEquals(List.of(), new OntologyEnforcer().enforce(Notice.SourceUnavailable.class));
     }
 
     private record Tidiness() implements Principle {

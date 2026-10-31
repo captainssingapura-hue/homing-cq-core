@@ -1,6 +1,6 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
@@ -84,6 +84,7 @@ public record BenchPane() implements StatelessFunctionalObject {
     private TreeView<IndexEntry> tree(final String id) {
         final TreeView<IndexEntry> tree = new TreeView<>();
         tree.setId(id);
+        tree.setCellFactory(view -> new IndexCell());
         return tree;
     }
 

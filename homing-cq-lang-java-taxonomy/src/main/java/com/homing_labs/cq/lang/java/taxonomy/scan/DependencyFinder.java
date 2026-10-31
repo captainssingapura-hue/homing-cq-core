@@ -1,7 +1,6 @@
 package com.homing_labs.cq.lang.java.taxonomy.scan;
 
 import com.homing_labs.cq.lang.java.taxonomy.Dependency;
-import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
 import java.lang.classfile.Annotation;
@@ -48,8 +47,8 @@ record DependencyFinder() implements StatelessFunctionalObject {
 
     static final DependencyFinder INSTANCE = new DependencyFinder();
 
-    /** The dependencies of the class in a class file, as top-level members of it, in the place given. */
-    List<Occurrence> find(final ClassModel model, final Class<? extends MemberOf> top) {
+    /** The dependencies of the class in a class file, as members of it. */
+    List<Occurrence> find(final ClassModel model) {
         final Map<Dependency, Set<String>> found = new LinkedHashMap<>();
         Stream.of(Dependency.Signature.INSTANCE, Dependency.Annotation.INSTANCE, Dependency.Code.INSTANCE,
                         Dependency.LocalVariable.INSTANCE, Dependency.Nesting.INSTANCE,
@@ -70,7 +69,7 @@ record DependencyFinder() implements StatelessFunctionalObject {
         final List<Occurrence> dependencies = new ArrayList<>();
         found.forEach((where, names) -> names.stream()
                 .filter(name -> !name.equals(self))
-                .forEach(name -> dependencies.add(new Occurrence.OfMember(self, top, where, name))));
+                .forEach(name -> dependencies.add(new Occurrence.OfMember(self, where, name))));
         return dependencies;
     }
 

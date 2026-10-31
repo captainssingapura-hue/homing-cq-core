@@ -1,6 +1,6 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.extract.JavaCodeBase;
 import com.homing_labs.cq.lang.java.extract.JavaCodeBases;
 import com.homing_labs.cq.lang.java.extract.JavaUnitReader;

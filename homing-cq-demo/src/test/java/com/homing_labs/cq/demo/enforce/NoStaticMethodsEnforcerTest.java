@@ -9,7 +9,7 @@ import com.homing_labs.cq.demo.samples.StaticHelper;
 import com.homing_labs.cq.enforcer.def.Findings;
 import com.homing_labs.cq.enforcer.def.Result;
 import com.homing_labs.cq.lang.java.def.JavaMethod;
-import com.homing_labs.cq.lang.java.def.JavaUnits;
+import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;

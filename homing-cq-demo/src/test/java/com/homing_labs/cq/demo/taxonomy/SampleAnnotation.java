@@ -13,6 +13,8 @@ import java.util.function.Function;
  *     <li>class object - fields: {@code DEFAULT_LEVEL}, {@code OK} and {@code NAMER}; implementation: the one javac
  *     generates for the lambda in {@code NAMER}; member class: {@code Kind}</li>
  *     <li>instances - declarations: the elements {@code value}, and {@code level}, with a default</li>
+ *     <li>in its code - local class: {@code Trimmer}; anonymous class: a {@link Function}; both in the lambda that
+ *     initialises {@code NAMER}</li>
  *     <li>dependencies - in signatures, an annotation ({@link Retention}), in code, in local variables (the lambda's
  *     parameter), in nesting and an inlined constant ({@link HttpURLConnection#HTTP_OK}); an annotation cannot be
  *     sealed</li>
@@ -25,7 +27,20 @@ public @interface SampleAnnotation {
 
     int OK = HttpURLConnection.HTTP_OK;
 
-    Function<String, String> NAMER = name -> name.trim();
+    Function<String, String> NAMER = name -> {
+        class Trimmer {
+            String trim(final String text) {
+                return text.trim();
+            }
+        }
+        final Function<String, String> trimmed = new Function<>() {
+            @Override
+            public String apply(final String text) {
+                return new Trimmer().trim(text);
+            }
+        };
+        return trimmed.apply(name);
+    };
 
     String value();
 

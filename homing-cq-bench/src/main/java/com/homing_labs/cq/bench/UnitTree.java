@@ -1,6 +1,6 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 import javafx.scene.control.TreeItem;
 
@@ -27,7 +27,8 @@ public record UnitTree() implements StatelessFunctionalObject {
                     final TreeItem<IndexEntry> node = new TreeItem<>(new IndexEntry.Package(name));
                     node.setExpanded(true);
                     inPackage.forEach(unit -> node.getChildren().add(new TreeItem<>(new IndexEntry.OfClass(
-                            new Selection(unit, unit.type()), unit.type().getSimpleName()))));
+                            new Selection(unit, unit.type()), unit.type().getSimpleName(), unit.kind(),
+                            Existence.TopLevel.INSTANCE))));
                     root.getChildren().add(node);
                 });
         return root;

@@ -1,8 +1,8 @@
 package com.homing_labs.cq.lang.java.taxonomy;
 
 /**
- * A dependency: another class a class names in its class file, by where it names it - a top-level member of the class,
- * beside its superclass and superinterfaces. Those are kinds of their own, and dependencies only where they are named
+ * A dependency: another class a class names in its class file, by where it names it - a member of the class, beside
+ * its superclass and superinterfaces. Those are kinds of their own, and dependencies only where they are named
  * again, in a signature or in code, say. A class's own name is not a dependency. One class can be a dependency several
  * times over, once for each kind of place it is named in.
  *

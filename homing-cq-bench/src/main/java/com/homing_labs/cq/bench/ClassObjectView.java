@@ -1,12 +1,9 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
-import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.Placement;
 import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
-import com.homing_labs.cq.lang.java.taxonomy.scan.ClassScanner;
-import com.homing_labs.cq.lang.java.taxonomy.scan.Occurrence;
 import hue.captains.singapura.tao.ontology.Scalar;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
@@ -15,23 +12,21 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.layout.BorderPane;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.stream.Stream;
 
 /**
- * Measures the class object, from the class files of the selection alone, in two parts. Above, a summary: a line for
- * each class, and one for each object the taxonomy lets a class of its kind have, in each place it can be - with how
- * many a class can have there, how many it has, and whether the two agree. Below, the instances found: those of the
- * summary line selected, or every one with no line selected.
+ * The class object, as the selected unit holds it: the attributes of the class selected - or of every class of the
+ * unit, when the unit itself is selected - in two parts. Above, a summary: a line for each class, and one for each
+ * object the taxonomy lets a class of its kind have, with how many it can have and how many it has. Below, the values:
+ * those of the summary line selected, or every one with no line selected. The unit's attributes were held to the
+ * taxonomy when it was read, so every count fits its cardinality.
  */
 public final class ClassObjectView implements BenchView {
 
@@ -43,34 +38,25 @@ public final class ClassObjectView implements BenchView {
 
     private final BorderPane pane = new BorderPane();
 
-    /** The instances found in the selection's class files. */
-    private List<Occurrence> found = List.of();
+    /** The summary's lines for the selection shown, each with its values. */
+    private Map<Line, List<Row>> measured = Map.of();
 
     public ClassObjectView() {
         summary.setId("summary");
-        summary.getColumns().add(column("Class", (Line line) -> shortName(line.inClass()), 170));
-        summary.getColumns().add(column("Place", (Line line) -> line.place().map(this::placeName).orElse("-"), 170));
-        summary.getColumns().add(column("Object", (Line line) -> kindName(line.object()), 200));
+        summary.getColumns().add(column("Class", (Line line) -> shortName(line.inClass()), 200));
+        summary.getColumns().add(column("Object", (Line line) -> kindName(line.object()), 240));
         summary.getColumns().add(column("Cardinality",
                 (Line line) -> line.cardinality().map(allowed -> allowed.getClass().getSimpleName()).orElse("-"), 110));
         summary.getColumns().add(column("Count", Line::count, 70));
-        summary.getColumns().add(column("Fits", (Line line) -> line.fits() ? "yes" : "no", 60));
-        summary.setRowFactory(table -> new TableRow<>() {
-            @Override
-            protected void updateItem(final Line line, final boolean empty) {
-                super.updateItem(line, empty);
-                setStyle(line != null && !line.fits() ? "-fx-background-color: #f6d5d5;" : "");
-            }
-        });
         summary.setPlaceholder(new Label("Nothing selected"));
         summary.getSelectionModel().selectedItemProperty()
                 .addListener((observed, before, line) -> details.getItems().setAll(rows(Optional.ofNullable(line))));
         details.setId("details");
-        details.getColumns().add(column("Class", Row::type, 170));
-        details.getColumns().add(column("Place", Row::place, 170));
-        details.getColumns().add(column("Object", Row::object, 200));
-        details.getColumns().add(column("Name", Row::name, 440));
-        details.setPlaceholder(new Label("No instances"));
+        details.getColumns().add(column("Class", Row::type, 200));
+        details.getColumns().add(column("Object", Row::object, 240));
+        details.getColumns().add(column("Value", Row::name, 600));
+        details.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        details.setPlaceholder(new Label("No values"));
         caption.setPadding(new Insets(6, 8, 6, 8));
         final SplitPane split = new SplitPane(summary, details);
         split.setOrientation(Orientation.VERTICAL);
@@ -91,20 +77,15 @@ public final class ClassObjectView implements BenchView {
 
     @Override
     public void show(final Optional<Selection> selection) {
-        found = selection.map(selected -> selected.classes().stream()
-                        .flatMap(type -> ClassScanner.INSTANCE.scan(classFile(type)).stream())
-                        .toList())
-                .orElse(List.of());
-        final List<Line> lines = summarise();
-        summary.getItems().setAll(lines);
+        measured = selection.map(this::measure).orElse(Map.of());
+        summary.getItems().setAll(measured.keySet());
         details.getItems().setAll(rows(Optional.empty()));
         caption.setText(selection.map(selected -> {
-            final long misfits = lines.stream().filter(line -> !line.fits()).count();
-            return found.size() + " objects in " + selected.classes().size()
-                    + (selected.classes().size() == 1 ? " class" : " classes") + ", read from the class files alone - "
-                    + (misfits == 0 ? "every count fits its cardinality"
-                    : misfits + (misfits == 1 ? " count does" : " counts do") + " not fit its cardinality");
-        }).orElse("Select a unit, or a class nested in one, to see the objects in its class files."));
+            final long classes = measured.keySet().stream().filter(line -> line.cardinality().isEmpty()).count();
+            final long values = measured.values().stream().mapToLong(List::size).sum() - classes;
+            return values + " values in " + classes + (classes == 1 ? " class" : " classes")
+                    + ", from the attributes the unit holds";
+        }).orElse("Select a unit, or a class nested in one, to see the attributes the unit holds for it."));
     }
 
     /** The summary's lines. */
@@ -112,33 +93,40 @@ public final class ClassObjectView implements BenchView {
         return List.copyOf(summary.getItems());
     }
 
-    /** The instances shown below the summary. */
+    /** The values shown below the summary. */
     public List<Row> rows() {
         return List.copyOf(details.getItems());
     }
 
-    /** A line for each class found, and one for each object it can have in each of its places, counted. */
-    private List<Line> summarise() {
-        return found.stream()
-                .flatMap(occurrence -> occurrence instanceof Occurrence.OfClass type ? Stream.of(type) : Stream.empty())
-                .flatMap(type -> Stream.concat(
-                        Stream.of(new Line(type.name(), Optional.empty(), type.kind().getClass(), Optional.empty(), 0)),
-                        Taxonomy.INSTANCE.placements(type.kind()).stream()
-                                .map(placement -> line(type.name(), placement))))
-                .map(line -> line.counted(found))
+    /**
+     * A line for each class selected, and one for each object it can have, counted, with their values: every class of
+     * the unit when the unit is selected, or the nested class selected alone.
+     */
+    private Map<Line, List<Row>> measure(final Selection selection) {
+        final List<ClassAttributes> shown = UnitClasses.INSTANCE.of(selection.unit()).stream()
+                .filter(each -> selection.type() == selection.unit().type()
+                        || each.name().binaryName().equals(selection.type().getName()))
                 .toList();
-    }
-
-    private Line line(final String inClass, final Placement placement) {
-        return new Line(inClass, Optional.of(placement.place()), placement.object(),
-                Optional.of(placement.cardinality()), 0);
+        final Map<Line, List<Row>> lines = new LinkedHashMap<>();
+        for (final ClassAttributes each : shown) {
+            final String name = each.name().binaryName();
+            final Class<? extends ObjectKind> kind = each.attributes().kind().getClass();
+            lines.put(new Line(name, kind, Optional.empty(), 1),
+                    List.of(new Row(shortName(name), kindName(kind), name)));
+            for (final Placement placement : Taxonomy.INSTANCE.placements(each.attributes().kind())) {
+                final Class<? extends ObjectKind> object = placement.object().getClass();
+                final List<Row> values = each.attributes().entry(placement.object()).all().stream()
+                        .map(value -> new Row(shortName(name), kindName(object), ValueText.INSTANCE.of(value.object())))
+                        .toList();
+                lines.put(new Line(name, object, Optional.of(placement.cardinality()), values.size()), values);
+            }
+        }
+        return lines;
     }
 
     private List<Row> rows(final Optional<Line> line) {
-        return found.stream()
-                .filter(occurrence -> line.map(selected -> selected.holds(occurrence)).orElse(true))
-                .map(this::row)
-                .toList();
+        return line.map(selected -> measured.getOrDefault(selected, List.of()))
+                .orElseGet(() -> measured.values().stream().flatMap(List::stream).toList());
     }
 
     private <T, V> TableColumn<T, V> column(final String title, final Function<T, V> value, final double width) {
@@ -148,71 +136,25 @@ public final class ClassObjectView implements BenchView {
         return column;
     }
 
-    private Row row(final Occurrence occurrence) {
-        return switch (occurrence) {
-            case Occurrence.OfClass type -> new Row(shortName(type.name()), "-", kindName(type.kind().getClass()),
-                    type.name().replace('/', '.'));
-            case Occurrence.OfMember member -> new Row(shortName(member.inClass()), placeName(member.place()),
-                    kindName(member.kind().getClass()), member.name().replace('/', '.'));
-        };
-    }
-
     /** A class without its package: {@code SampleEnum$1}. */
-    private String shortName(final String internalName) {
-        return internalName.substring(internalName.lastIndexOf('/') + 1);
+    private String shortName(final String binaryName) {
+        return binaryName.substring(binaryName.lastIndexOf('.') + 1);
     }
 
-    /** A place as the taxonomy names it, without {@code MemberOf}: {@code Enum.ClassObject}. */
-    private String placeName(final Class<?> place) {
-        final String name = place.getName();
-        return name.substring(name.indexOf('$') + 1).replace('$', '.');
-    }
-
-    /** A kind of object as the taxonomy names it: {@code Method.Implementation}, {@code Field}. */
+    /** A kind of object as the taxonomy names it: {@code StaticMethod.Implementation}, {@code Field}. */
     private String kindName(final Class<?> kind) {
         return kind.getName().substring(kind.getPackageName().length() + 1).replace('$', '.');
     }
 
-    private byte[] classFile(final Class<?> type) {
-        final String name = type.getName().replace('.', '/') + ".class";
-        try (InputStream in = type.getClassLoader().getResourceAsStream(name)) {
-            if (in == null) {
-                throw new IllegalStateException("No class file for " + type.getName());
-            }
-            return in.readAllBytes();
-        } catch (final IOException e) {
-            throw new UncheckedIOException("Cannot read the class file of " + type.getName(), e);
-        }
-    }
-
     /**
-     * A line of the summary: a class itself, with no place, or an object in one of its places - with how many of it a
-     * class can have there, and how many it has.
+     * A line of the summary: a class itself, with no cardinality, or an object it can have - with how many of it a
+     * class can have, and how many it has.
      */
-    public record Line(String inClass, Optional<Class<? extends MemberOf>> place, Class<? extends ObjectKind> object,
-                       Optional<Cardinality> cardinality, long count) implements Scalar {
-
-        /** Whether the count is one the cardinality allows; a class itself always fits. */
-        public boolean fits() {
-            return cardinality.map(allowed -> allowed.allows(count)).orElse(true);
-        }
-
-        /** Whether an instance found is one of this line's. */
-        public boolean holds(final Occurrence occurrence) {
-            return switch (occurrence) {
-                case Occurrence.OfClass type -> place.isEmpty() && type.name().equals(inClass);
-                case Occurrence.OfMember member -> place.isPresent() && member.place() == place.get()
-                        && member.inClass().equals(inClass) && member.kind().getClass() == object;
-            };
-        }
-
-        /** This line, with the instances among those found counted. */
-        public Line counted(final List<Occurrence> found) {
-            return new Line(inClass, place, object, cardinality, found.stream().filter(this::holds).count());
-        }
+    public record Line(String inClass, Class<? extends ObjectKind> object, Optional<Cardinality> cardinality,
+                       long count) implements Scalar {
     }
 
-    /** A row of the instances: the class an object was found in, its place there, the object, and its name. */
-    public record Row(String type, String place, String object, String name) implements Scalar {
+    /** A row of the values: the class a value is of, the object it is a value of, and the value in a line. */
+    public record Row(String type, String object, String name) implements Scalar {
     }
 }

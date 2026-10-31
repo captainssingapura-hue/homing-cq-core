@@ -1,8 +1,8 @@
 package com.homing_labs.cq.lang.java.extract;
 
 import com.homing_labs.cq.lang.java.def.JavaSource;
-import com.homing_labs.cq.lang.java.def.JavaUnit;
-import com.homing_labs.cq.lang.java.def.JavaUnits;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 

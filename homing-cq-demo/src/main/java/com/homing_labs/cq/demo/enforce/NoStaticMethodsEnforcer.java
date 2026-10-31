@@ -6,7 +6,7 @@ import com.homing_labs.cq.enforcer.def.Enforcer;
 import com.homing_labs.cq.enforcer.def.Findings;
 import com.homing_labs.cq.enforcer.def.Result;
 import com.homing_labs.cq.lang.java.def.JavaMethod;
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
 import java.lang.reflect.Method;

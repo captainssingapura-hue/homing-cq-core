@@ -6,7 +6,7 @@ package com.homing_labs.cq.lang.java.taxonomy;
  * class's is then {@link java.lang.Object}, an enum's is {@link java.lang.Enum} - or its enum, for the body of a
  * constant - and a record's is {@link java.lang.Record}. Only {@link java.lang.Object} itself, a class, has none. An
  * interface or an annotation has none either; its class file names {@link java.lang.Object} only because the JVM asks
- * for one.
+ * for one. It is a type, with any type arguments the class gives it: {@code extends AbstractList<T>}.
  */
 public record Superclass() implements ObjectKind,
         MemberOf.Class<Cardinality.ZeroOrOne>, MemberOf.AbstractClass<Cardinality.One>,

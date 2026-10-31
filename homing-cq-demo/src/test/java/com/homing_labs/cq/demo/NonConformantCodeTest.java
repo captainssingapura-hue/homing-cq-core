@@ -18,7 +18,7 @@ import com.homing_labs.cq.enforcer.def.Findings;
 import com.homing_labs.cq.enforcer.def.Result;
 import com.homing_labs.cq.lang.java.def.JavaField;
 import com.homing_labs.cq.lang.java.def.JavaMethod;
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.extract.JavaUnitReader;
 import org.junit.jupiter.api.Test;
 

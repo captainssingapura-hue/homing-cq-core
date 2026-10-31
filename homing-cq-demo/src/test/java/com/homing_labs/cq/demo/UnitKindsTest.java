@@ -1,6 +1,6 @@
 package com.homing_labs.cq.demo;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.extract.JavaUnitReader;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.scan.ClassScanner;

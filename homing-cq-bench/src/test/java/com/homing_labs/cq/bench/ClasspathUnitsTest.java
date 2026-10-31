@@ -1,6 +1,6 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

@@ -1,8 +1,8 @@
 package com.homing_labs.cq.bench;
 
 /**
- * A class with each kind of class nested in it - anonymous, local, inner and static - and one nested a level deeper,
- * for the nest index.
+ * A class with each kind of class nested in it - anonymous, local, inner and static - and two nested a level deeper,
+ * one a member and one local, for the nest index and the class object.
  */
 class NestFixture {
 
@@ -18,6 +18,12 @@ class NestFixture {
     }
 
     class Inner {
+
+        Object make() {
+            class Made {
+            }
+            return new Made();
+        }
 
         class Deeper {
         }

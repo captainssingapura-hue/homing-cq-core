@@ -24,15 +24,13 @@
             <version>${project.parent.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
-            <artifactId>core</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
             <artifactId>homing-cq-lang-java-taxonomy</artifactId>
             <version>${project.parent.version}</version>
-            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
+            <artifactId>core</artifactId>
         </dependency>
 
         <dependency>

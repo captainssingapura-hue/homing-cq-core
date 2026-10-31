@@ -1,9 +1,11 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 import javafx.scene.control.TreeItem;
 
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -12,8 +14,9 @@ import java.util.Map;
 
 /**
  * The index of a unit's nest, the bench's second layer: the unit's top-level class at the top, and under each class the
- * classes declared in it - member classes, and local and anonymous ones - by their names in the class file, all open.
- * Selecting the top measures the whole nest; selecting a nested class, that class alone.
+ * classes declared in it - member classes, and local and anonymous ones - by their names in the class file, all open,
+ * each with its kind and how it exists there. Selecting the top measures the whole nest; selecting a nested class,
+ * that class alone.
  */
 public record NestIndex() implements StatelessFunctionalObject {
 
@@ -34,17 +37,30 @@ public record NestIndex() implements StatelessFunctionalObject {
     }
 
     private TreeItem<IndexEntry> item(final JavaUnit unit, final Class<?> type) {
-        final TreeItem<IndexEntry> item =
-                new TreeItem<>(new IndexEntry.OfClass(new Selection(unit, type), label(type)));
+        final TreeItem<IndexEntry> item = new TreeItem<>(new IndexEntry.OfClass(new Selection(unit, type), label(type),
+                JavaUnits.INSTANCE.kindOf(type), existence(type)));
         item.setExpanded(true);
         return item;
     }
 
-    /** A class by its name where it is declared: {@code Slot}; {@code Point (local)}; {@code anonymous 1}. */
+    /** A class by its name where it is declared: {@code Slot}; an anonymous class by its number there: {@code 1}. */
     private String label(final Class<?> type) {
-        if (type.isAnonymousClass()) {
-            return "anonymous " + type.getName().substring(type.getName().lastIndexOf('$') + 1);
+        return type.isAnonymousClass() ? type.getName().substring(type.getName().lastIndexOf('$') + 1)
+                : type.getSimpleName();
+    }
+
+    /** How a class of the nest exists in it, as reflection sees the class. */
+    private Existence existence(final Class<?> type) {
+        if (type.getEnclosingClass() == null) {
+            return Existence.TopLevel.INSTANCE;
         }
-        return type.isLocalClass() ? type.getSimpleName() + " (local)" : type.getSimpleName();
+        if (type.isAnonymousClass()) {
+            return Existence.Anonymous.INSTANCE;
+        }
+        if (type.isLocalClass()) {
+            return Existence.Local.INSTANCE;
+        }
+        return Modifier.isStatic(type.getModifiers()) ? Existence.StaticMember.INSTANCE
+                : Existence.InnerMember.INSTANCE;
     }
 }

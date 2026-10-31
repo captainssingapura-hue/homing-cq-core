@@ -1,9 +1,10 @@
 package com.homing_labs.cq.demo.taxonomy;
 
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
+import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
-import com.homing_labs.cq.lang.java.taxonomy.Subordinate;
+import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import com.homing_labs.cq.lang.java.taxonomy.scan.ClassScanner;
 import com.homing_labs.cq.lang.java.taxonomy.scan.Occurrence;
 import org.junit.jupiter.api.Named;
@@ -21,6 +22,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -29,8 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * Every class in the samples' nests scanned, and what was found aggregated by the object of the taxonomy it is. Each
- * object occurs at least once, and in every place the taxonomy gives it; nothing occurs where the taxonomy gives it no
- * place, and no class has more or fewer of an object than the taxonomy allows.
+ * object occurs at least once, and in every kind of class the taxonomy lets have it; nothing occurs in a kind of class
+ * the taxonomy does not let have it, and no class has more or fewer of an object than the taxonomy allows.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class TheSamplesCoverTheTaxonomyTest {
@@ -42,48 +44,51 @@ class TheSamplesCoverTheTaxonomyTest {
     private final Map<Class<?>, List<Occurrence>> byObject =
             found.stream().collect(Collectors.groupingBy(occurrence -> occurrence.kind().getClass()));
 
+    /** The kind of each class found, by its name. */
+    private final Map<String, ClassKind> kinds = found.stream()
+            .flatMap(occurrence -> occurrence instanceof Occurrence.OfClass type ? Stream.of(type) : Stream.empty())
+            .collect(Collectors.toMap(Occurrence.OfClass::name, Occurrence.OfClass::kind));
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("objects")
     void everyObjectOccurs(final Class<?> object) {
-        assertFalse(byObject.getOrDefault(object, List.of()).isEmpty(), object.getSimpleName() + " never occurs");
+        assertFalse(byObject.getOrDefault(object, List.of()).isEmpty(), name(object) + " never occurs");
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("placements")
-    void everyObjectOccursInEveryPlaceItHas(final Placement placement) {
-        assertFalse(members().filter(placement::holds).toList().isEmpty(), placement + " never occurs");
+    void everyObjectOccursInEveryKindOfClassThatCanHaveIt(final Placement placement) {
+        assertFalse(members().filter(holds(placement)).toList().isEmpty(), placement + " never occurs");
     }
 
     @Test
-    void nothingOccursWhereTheTaxonomyGivesItNoPlace() {
-        assertEquals(List.of(), members().filter(member -> !member.place().isInstance(member.kind())).toList());
+    void nothingOccursInAKindOfClassThatCannotHaveIt() {
+        assertEquals(List.of(), members()
+                .filter(member -> !Taxonomy.INSTANCE.place(kinds.get(member.inClass())).isInstance(member.kind()))
+                .toList());
     }
 
     @Test
     void noClassHasMoreOrFewerOfAnObjectThanTheTaxonomyAllows() {
         final List<String> wrong = new ArrayList<>();
-        members().collect(Collectors.groupingBy(Occurrence.OfMember::inClass)).forEach((inClass, members) -> {
-            final Class<?> top = members.stream()
-                    .filter(member -> member.kind() instanceof Subordinate.ClassObject)
-                    .findFirst().orElseThrow().place();
-            placements().map(Named::getPayload)
-                    .filter(placement -> placement.place() == top || placement.place().getEnclosingClass() == top)
-                    .forEach(placement -> {
-                        final long count = members.stream().filter(placement::holds).count();
-                        if (!placement.allows(count)) {
-                            wrong.add(inClass + " has " + count + " of " + placement);
-                        }
-                    });
-        });
+        members().collect(Collectors.groupingBy(Occurrence.OfMember::inClass)).forEach((inClass, members) ->
+                placements().map(Named::getPayload)
+                        .filter(placement -> placement.place() == Taxonomy.INSTANCE.place(kinds.get(inClass)))
+                        .forEach(placement -> {
+                            final long count = members.stream().filter(holds(placement)).count();
+                            if (!placement.allows(count)) {
+                                wrong.add(inClass + " has " + count + " of " + placement);
+                            }
+                        }));
         assertEquals(List.of(), wrong);
     }
 
     /** Every object of the taxonomy. */
     Stream<Named<Class<?>>> objects() {
-        return leaves(ObjectKind.class).stream().map(object -> Named.of(object.getSimpleName(), object));
+        return leaves(ObjectKind.class).stream().map(object -> Named.of(name(object), object));
     }
 
-    /** Every place each object has in the taxonomy, with how many of it a class has there. */
+    /** Every kind of class each object can be a member of, with how many of it a class of that kind has. */
     Stream<Named<Placement>> placements() {
         return leaves(ObjectKind.class).stream()
                 .flatMap(object -> Arrays.stream(object.getGenericInterfaces())
@@ -93,6 +98,12 @@ class TheSamplesCoverTheTaxonomyTest {
                                 (Class<?>) parameterized.getActualTypeArguments()[0]))
                                 : Stream.empty()))
                 .map(placement -> Named.of(placement.toString(), placement));
+    }
+
+    /** Whether a member found is one of a placement's: of its object, in a class of its kind. */
+    private Predicate<Occurrence.OfMember> holds(final Placement placement) {
+        return member -> member.kind().getClass() == placement.object()
+                && Taxonomy.INSTANCE.place(kinds.get(member.inClass())) == placement.place();
     }
 
     private Stream<Occurrence.OfMember> members() {
@@ -128,12 +139,13 @@ class TheSamplesCoverTheTaxonomyTest {
         }
     }
 
-    /** A place an object has in the taxonomy, and how many of it a class has there. */
-    record Placement(Class<?> place, Class<?> object, Class<?> cardinality) {
+    /** A type of the taxonomy as it names it: {@code StaticMethod.Implementation}, {@code MemberOf.Enum}. */
+    private static String name(final Class<?> type) {
+        return type.getName().substring(type.getPackageName().length() + 1).replace('$', '.');
+    }
 
-        boolean holds(final Occurrence.OfMember member) {
-            return member.place() == place && member.kind().getClass() == object;
-        }
+    /** A kind of class an object can be a member of, and how many of it a class of that kind has. */
+    record Placement(Class<?> place, Class<?> object, Class<?> cardinality) {
 
         boolean allows(final long count) {
             if (cardinality == Cardinality.One.class) {
@@ -147,9 +159,7 @@ class TheSamplesCoverTheTaxonomyTest {
 
         @Override
         public String toString() {
-            final String name = place.getName();
-            return object.getSimpleName() + " in " + name.substring(name.indexOf('$') + 1).replace('$', '.')
-                    + " (" + cardinality.getSimpleName() + ")";
+            return name(object) + " in " + place.getSimpleName() + " (" + cardinality.getSimpleName() + ")";
         }
     }
 }

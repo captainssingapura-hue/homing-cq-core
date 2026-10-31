@@ -2,12 +2,13 @@ package com.homing_labs.cq.demo;
 
 import com.homing_labs.cq.core.def.lang.JavaLang;
 import com.homing_labs.cq.core.principle.def.Principle;
+import com.homing_labs.cq.demo.enforce.NoPublicFieldsEnforcer;
 import com.homing_labs.cq.demo.enforce.NoStaticMethodsEnforcer;
 import com.homing_labs.cq.demo.enforce.NoStaticMutableVariablesEnforcer;
 import com.homing_labs.cq.demo.rule.NoStaticMethods;
 import com.homing_labs.cq.enforcer.def.Enforcer;
 import com.homing_labs.cq.enforcer.def.Result;
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.extract.JavaUnitReader;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ class TheFrameworkHoldsToTheDemoRulesTest {
             assertTrue(units.size() > 0, "no units read for the module of " + anchor.getName());
             found.addAll(DemoFindings.INSTANCE.of(NoStaticMethodsEnforcer.INSTANCE, units).values());
             found.addAll(DemoFindings.INSTANCE.of(NoStaticMutableVariablesEnforcer.INSTANCE, units).values());
+            found.addAll(DemoFindings.INSTANCE.of(NoPublicFieldsEnforcer.INSTANCE, units).values());
         }
         assertEquals(List.of(), found);
     }

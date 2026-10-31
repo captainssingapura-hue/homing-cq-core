@@ -1,22 +1,27 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.JavaUnits;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.Constructor;
 import com.homing_labs.cq.lang.java.taxonomy.Field;
+import com.homing_labs.cq.lang.java.taxonomy.LocalClass;
 import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
+import com.homing_labs.cq.lang.java.taxonomy.StaticField;
 import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
+import javafx.scene.layout.HBox;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -35,7 +40,7 @@ class BenchPaneTest {
 
     private static final String TAXONOMY = "com.homing_labs.cq.lang.java.taxonomy";
 
-    private static final String ENUM_RECORD = TAXONOMY.replace('.', '/') + "/ClassKind$Enum";
+    private static final String ENUM_RECORD = TAXONOMY + ".ClassKind$Enum";
 
     private static final String RULES = "com.homing_labs.cq.bench.rules";
 
@@ -59,15 +64,40 @@ class BenchPaneTest {
                 () -> NestIndex.INSTANCE.of(JavaUnits.INSTANCE.of(MemberOf.class, Optional.empty())));
         assertEquals("MemberOf", memberOf.getValue().toString());
         assertEquals(List.of("AbstractClass", "Annotation", "Class", "Enum", "Interface", "Record"), labels(memberOf));
-        assertEquals(List.of("ClassObject", "Instance"), labels(child(memberOf, "Class")));
+        assertTrue(child(memberOf, "Class").isLeaf());
     }
 
     @Test
-    void theNestIndexNamesLocalAndAnonymousClasses() {
+    void theNestIndexBadgesEachClassByItsKindAndHowItExists() {
         final TreeItem<IndexEntry> fixture = FxThread.INSTANCE.call(
                 () -> NestIndex.INSTANCE.of(JavaUnits.INSTANCE.of(NestFixture.class, Optional.empty())));
-        assertEquals(List.of("anonymous 1", "Local (local)", "Inner", "Nested"), labels(fixture));
-        assertEquals(List.of("Deeper"), labels(child(fixture, "Inner")));
+        assertEquals(List.of("1", "Local", "Inner", "Nested"), labels(fixture));
+        assertEquals(List.of(List.of("C", "anon"), List.of("C", "local"), List.of("C", "inner"),
+                        List.of("C", "static")),
+                fixture.getChildren().stream().map(this::badges).toList());
+        assertEquals(List.of("C"), badges(fixture));
+        assertEquals(List.of("Made", "Deeper"), labels(child(fixture, "Inner")));
+        assertEquals(List.of("C", "local"), badges(child(child(fixture, "Inner"), "Made")));
+        assertEquals(List.of("C", "inner"), badges(child(child(fixture, "Inner"), "Deeper")));
+        final TreeItem<IndexEntry> classKind = FxThread.INSTANCE.call(
+                () -> NestIndex.INSTANCE.of(JavaUnits.INSTANCE.of(ClassKind.class, Optional.empty())));
+        assertEquals(List.of("I"), badges(classKind));
+        assertEquals(List.of("R", "static"), badges(child(classKind, "Enum")));
+    }
+
+    @Test
+    void theUnitTreeShowsEachUnitWithTheBadgeOfItsKind() {
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of()));
+        final TreeItem<IndexEntry> taxonomy = FxThread.INSTANCE.call(() -> child(tree(bench, "#units").getRoot(),
+                TAXONOMY));
+        assertEquals(List.of("I"), badges(child(taxonomy, "ClassKind")));
+        assertEquals(List.of("R"), badges(child(taxonomy, "Placement")));
+        assertEquals(List.of("I"), FxThread.INSTANCE.call(() -> bench.root().lookupAll(".tree-cell").stream()
+                .map(cell -> (IndexCell) cell)
+                .filter(cell -> "ClassKind".equals(cell.getText()))
+                .flatMap(cell -> ((HBox) cell.getGraphic()).getChildren().stream())
+                .map(badge -> ((Label) badge).getText())
+                .toList()), "the cell shows the badge");
     }
 
     @Test
@@ -88,11 +118,29 @@ class BenchPaneTest {
         assertEquals("ClassKind", FxThread.INSTANCE.call(() -> nest(bench).getSelectionModel().getSelectedItem()
                 .getValue().toString()));
         final List<ClassObjectView.Row> rows = FxThread.INSTANCE.call(classObject::rows);
-        assertTrue(rows.contains(new ClassObjectView.Row("ClassKind", "-", "ClassKind.Interface",
+        assertTrue(rows.contains(new ClassObjectView.Row("ClassKind", "ClassKind.Interface",
                 TAXONOMY + ".ClassKind")), rows.toString());
-        assertTrue(rows.contains(new ClassObjectView.Row("ClassKind$Enum", "Record.ClassObject", "Field",
-                "INSTANCE")), rows.toString());
+        assertTrue(rows.stream().anyMatch(row -> row.type().equals("ClassKind$Enum")
+                && row.object().equals("StaticField") && row.name().startsWith("INSTANCE: ClassKind$Enum - public")),
+                rows.toString());
         assertTrue(FxThread.INSTANCE.call(source::text).contains("Source of ClassKind: "));
+    }
+
+    @Test
+    void aNestedClassAloneHasTheLocalClassesItsCodeDeclares() {
+        final ClassObjectView classObject = FxThread.INSTANCE.call(ClassObjectView::new);
+        final JavaUnit unit = JavaUnits.INSTANCE.of(NestFixture.class, Optional.empty());
+        final String inner = NestFixture.Inner.class.getName();
+        FxThread.INSTANCE.call(() -> {
+            classObject.show(Optional.of(new Selection(unit, NestFixture.Inner.class)));
+            return classObject;
+        });
+        assertTrue(FxThread.INSTANCE.call(classObject::lines).contains(new ClassObjectView.Line(inner,
+                LocalClass.class, Optional.of(Cardinality.ZeroOrMore.INSTANCE), 1)), "its local class is counted");
+        assertTrue(FxThread.INSTANCE.call(classObject::rows).contains(new ClassObjectView.Row("NestFixture$Inner",
+                "LocalClass", "NestFixture$Inner$1Made in make()")));
+        assertTrue(FxThread.INSTANCE.call(classObject::lines).stream().allMatch(line -> line.inClass().equals(inner)),
+                "only the class selected");
     }
 
     @Test
@@ -117,15 +165,14 @@ class BenchPaneTest {
         FxThread.INSTANCE.call(() -> selectInNest(bench, "ClassKind", "Enum"));
         final List<ClassObjectView.Line> lines = FxThread.INSTANCE.call(classObject::lines);
         assertEquals(1 + Taxonomy.INSTANCE.placements(ClassKind.Record.INSTANCE).size(), lines.size());
-        assertEquals(new ClassObjectView.Line(ENUM_RECORD, Optional.empty(), ClassKind.Record.class, Optional.empty(),
-                1), lines.getFirst());
+        assertEquals(new ClassObjectView.Line(ENUM_RECORD, ClassKind.Record.class, Optional.empty(), 1),
+                lines.getFirst());
         assertTrue(lines.containsAll(List.of(
-                line(MemberOf.Record.class, Constructor.class, Cardinality.OneOrMore.INSTANCE, 1),
-                line(MemberOf.Record.ClassObject.class, Field.class, Cardinality.ZeroOrMore.INSTANCE, 1),
-                line(MemberOf.Record.Instance.class, Method.Implementation.class, Cardinality.OneOrMore.INSTANCE, 3),
-                line(MemberOf.Record.Instance.class, Field.class, Cardinality.ZeroOrMore.INSTANCE, 0))),
+                line(Constructor.class, Cardinality.OneOrMore.INSTANCE, 1),
+                line(StaticField.class, Cardinality.ZeroOrMore.INSTANCE, 1),
+                line(Method.Implementation.class, Cardinality.OneOrMore.INSTANCE, 3),
+                line(Field.class, Cardinality.ZeroOrMore.INSTANCE, 0))),
                 lines.toString());
-        assertTrue(lines.stream().allMatch(ClassObjectView.Line::fits), lines.toString());
     }
 
     @Test
@@ -137,14 +184,14 @@ class BenchPaneTest {
             return classObject.rows();
         });
         final List<ClassObjectView.Row> implementations = FxThread.INSTANCE.call(() -> {
-            summary(bench).getSelectionModel().select(line(MemberOf.Record.Instance.class,
-                    Method.Implementation.class, Cardinality.OneOrMore.INSTANCE, 3));
+            summary(bench).getSelectionModel().select(line(Method.Implementation.class, Cardinality.OneOrMore.INSTANCE,
+                    3));
             return classObject.rows();
         });
         assertEquals(List.of("equals", "hashCode", "toString"), implementations.stream()
                 .map(row -> row.name().substring(0, row.name().indexOf('('))).sorted().toList());
-        assertTrue(implementations.stream().allMatch(row -> row.place().equals("Record.Instance")
-                && row.object().equals("Method.Implementation")), implementations.toString());
+        assertTrue(implementations.stream().allMatch(row -> row.object().equals("Method.Implementation")),
+                implementations.toString());
         final List<ClassObjectView.Row> again = FxThread.INSTANCE.call(() -> {
             summary(bench).getSelectionModel().clearSelection();
             return classObject.rows();
@@ -163,7 +210,7 @@ class BenchPaneTest {
             return ruleNames(rules.applied());
         }));
         assertEquals(List.of("EveryUnitIsSeen"), FxThread.INSTANCE.call(() -> {
-            select(bench, "Places");
+            select(bench, "Placement");
             return ruleNames(rules.applied());
         }));
     }
@@ -192,7 +239,10 @@ class BenchPaneTest {
         for (final Class<?> type : List.of(ClasspathUnits.class, Selection.class, IndexEntry.class,
                 IndexEntry.Package.class, IndexEntry.OfClass.class, UnitTree.class, NestIndex.class,
                 BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
-                SourceView.class, ClasspathEnforcers.class, RulesView.class, RulesView.Applied.class,
+                SourceView.class, ClasspathEnforcers.class, RulesView.class, RulesView.Applied.class, IndexCell.class,
+                ClassAttributes.class, UnitClasses.class, ValueText.class,
+                Badge.class, Badges.class, Existence.TopLevel.class, Existence.StaticMember.class,
+                Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class,
                 BenchPane.class, BenchApp.class, Bench.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());
         }
@@ -224,9 +274,9 @@ class BenchPaneTest {
     }
 
     /** A line of the summary for {@code ClassKind.Enum}, a record. */
-    private ClassObjectView.Line line(final Class<? extends MemberOf> place, final Class<? extends ObjectKind> object,
-                                      final Cardinality cardinality, final long count) {
-        return new ClassObjectView.Line(ENUM_RECORD, Optional.of(place), object, Optional.of(cardinality), count);
+    private ClassObjectView.Line line(final Class<? extends ObjectKind> object, final Cardinality cardinality,
+                                      final long count) {
+        return new ClassObjectView.Line(ENUM_RECORD, object, Optional.of(cardinality), count);
     }
 
     @SuppressWarnings("unchecked")
@@ -246,6 +296,11 @@ class BenchPaneTest {
 
     private List<String> labels(final TreeItem<IndexEntry> item) {
         return item.getChildren().stream().map(child -> child.getValue().toString()).toList();
+    }
+
+    /** The texts of a class entry's badges, its kind's first. */
+    private List<String> badges(final TreeItem<IndexEntry> item) {
+        return Badges.INSTANCE.of((IndexEntry.OfClass) item.getValue()).stream().map(Badge::text).toList();
     }
 
     /** The bench over the taxonomy module, with these views, laid out in a scene. */

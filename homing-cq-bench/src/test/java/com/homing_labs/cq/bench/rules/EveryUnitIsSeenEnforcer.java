@@ -4,7 +4,7 @@ import com.homing_labs.cq.core.def.lang.JavaLang;
 import com.homing_labs.cq.enforcer.def.Enforcer;
 import com.homing_labs.cq.enforcer.def.Findings;
 import com.homing_labs.cq.enforcer.def.Result;
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
 
 import java.util.Set;
 

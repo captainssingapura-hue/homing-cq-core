@@ -1,7 +1,12 @@
 package com.homing_labs.cq.lang.java.extract;
 
+import com.homing_labs.cq.lang.java.unit.AnnotationUnit;
+import com.homing_labs.cq.lang.java.unit.ClassUnit;
+import com.homing_labs.cq.lang.java.unit.EnumUnit;
+import com.homing_labs.cq.lang.java.unit.InterfaceUnit;
 import com.homing_labs.cq.lang.java.def.JavaSource;
-import com.homing_labs.cq.lang.java.def.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.JavaUnit;
+import com.homing_labs.cq.lang.java.unit.RecordUnit;
 import com.homing_labs.cq.lang.java.fixtures.Plain;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -69,8 +74,8 @@ class JavaUnitReaderTest {
 
     @Test
     void eachUnitIsOfItsClassKind() {
-        assertEquals(List.of(JavaUnit.OfClass.class, JavaUnit.OfInterface.class, JavaUnit.OfEnum.class,
-                        JavaUnit.OfRecord.class, JavaUnit.OfAnnotation.class),
+        assertEquals(List.of(ClassUnit.class, InterfaceUnit.class, EnumUnit.class, RecordUnit.class,
+                        AnnotationUnit.class),
                 Stream.of("Plain", "AnInterface", "AnEnum", "ARecord", "AnAnnotation")
                         .map(name -> unit(name).getClass())
                         .toList());
