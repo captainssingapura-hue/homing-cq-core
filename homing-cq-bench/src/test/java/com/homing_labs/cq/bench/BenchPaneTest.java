@@ -1,19 +1,25 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.def.JavaSource;
+import com.homing_labs.cq.lang.java.model.ClassName;
+import com.homing_labs.cq.lang.java.model.MethodValue;
+import com.homing_labs.cq.lang.java.model.Values;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.Constructor;
+import com.homing_labs.cq.lang.java.taxonomy.Dependency;
 import com.homing_labs.cq.lang.java.taxonomy.Field;
 import com.homing_labs.cq.lang.java.taxonomy.LocalClass;
 import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
+import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.Superinterface;
 import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
+import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
@@ -33,11 +39,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -114,19 +123,21 @@ class BenchPaneTest {
     }
 
     @Test
-    void thereIsATabForEachView() {
-        final List<String> titles = FxThread.INSTANCE.call(() -> {
-            final LaidOut bench = new LaidOut(List.of(new ClassObjectView(), new SourceView()));
-            return ((TabPane) bench.root().lookup("#views")).getTabs().stream().map(Tab::getText).toList();
-        });
-        assertEquals(List.of("Class object", "Source"), titles);
+    void thereIsATabForEachViewAndTheSourceBesideThem() {
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(new ClassObjectView(),
+                new RulesView(BenchPaneTest.class.getClassLoader(), RULES))));
+        assertEquals(List.of("Class object", "Rules applied"), FxThread.INSTANCE.call(
+                () -> ((TabPane) bench.root().lookup("#views")).getTabs().stream().map(Tab::getText).toList()));
+        assertTrue(FxThread.INSTANCE.call(() -> bench.root().lookup("#source") != null
+                && ((TabPane) bench.root().lookup("#views")).getTabs().stream()
+                .noneMatch(tab -> tab.getContent().lookup("#source") != null)), "the source is in no tab");
     }
 
     @Test
     void selectingAUnitOpensItsNestAndShowsAllOfItInEveryView() {
         final ClassObjectView classObject = FxThread.INSTANCE.call(ClassObjectView::new);
         final SourceView source = FxThread.INSTANCE.call(SourceView::new);
-        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(classObject, source)));
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(classObject), source));
         FxThread.INSTANCE.call(() -> select(bench, "ClassKind"));
         assertEquals("ClassKind", FxThread.INSTANCE.call(() -> nest(bench).getSelectionModel().getSelectedItem()
                 .getValue().toString()));
@@ -138,10 +149,15 @@ class BenchPaneTest {
                 rows.toString());
         assertTrue(FxThread.INSTANCE.call(source::caption).startsWith("Source of ClassKind, "));
         assertTrue(FxThread.INSTANCE.call(source::text).contains("public sealed interface ClassKind extends"));
+        final List<String> highlighted = FxThread.INSTANCE.call(source::written);
+        assertEquals(1, highlighted.size(), "the unit selected is highlighted");
+        assertTrue(highlighted.getFirst().startsWith("/**")
+                        && highlighted.getFirst().contains("public sealed interface ClassKind extends"),
+                highlighted.getFirst());
     }
 
     @Test
-    void theSourceTabShowsTheFileThatDeclaresTheUnitOrSaysThereIsNone() {
+    void theSourceShowsTheFileThatDeclaresTheUnitOrSaysThereIsNone() {
         final SourceView source = FxThread.INSTANCE.call(SourceView::new);
         final URI file = URI.create("file:///sources/NestFixture.java");
         final String text = "class NestFixture {\n\n    class Inner {\n    }\n}\n";
@@ -156,12 +172,122 @@ class BenchPaneTest {
                 shown(source, Optional.empty()));
     }
 
-    /** What the Source tab shows for a selection: its caption, and the source. */
+    /** What the source shows for a selection: its caption, and the file. */
     private List<String> shown(final SourceView source, final Optional<Selection> selection) {
         return FxThread.INSTANCE.call(() -> {
             source.show(selection);
             return List.of(source.caption(), source.text());
         });
+    }
+
+    @Test
+    void theSourceHighlightsTheClassSelectedAndWhatTheClassObjectHasSelectedOfIt() {
+        final ClassObjectView classObject = FxThread.INSTANCE.call(ClassObjectView::new);
+        final SourceView source = FxThread.INSTANCE.call(SourceView::new);
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(classObject), source));
+        final List<String> members = FxThread.INSTANCE.call(() -> {
+            select(bench, "ClassKind");
+            summary(bench).getSelectionModel().select(summary(bench).getItems().stream()
+                    .filter(line -> line.object() == StaticMemberClass.class)
+                    .findFirst().orElseThrow());
+            return source.written();
+        });
+        assertEquals(List.of("Class", "AbstractClass", "Interface", "Enum", "Record", "Annotation"), members.stream()
+                .map(member -> member.substring(member.indexOf("record ") + 7, member.indexOf("()")))
+                .toList(), "each where it is written, from its documentation comment");
+        assertTrue(members.stream().allMatch(member -> member.startsWith("/**") && member.endsWith("}")));
+        assertEquals("6 values of StaticMemberClass of ClassKind: 6 written where highlighted.",
+                FxThread.INSTANCE.call(source::placed));
+        final List<String> one = FxThread.INSTANCE.call(() -> {
+            final List<ClassObjectView.Row> rows = classObject.rows();
+            details(bench).getSelectionModel().select(rows.indexOf(rows.stream()
+                    .filter(row -> row.name().endsWith("ClassKind$Enum"))
+                    .findFirst().orElseThrow()));
+            return source.written();
+        });
+        assertEquals(1, one.size(), "a value selected below the summary alone");
+        assertTrue(one.getFirst().contains("record Enum() implements ClassKind"), one.getFirst());
+        assertEquals(List.of("ClassKind$Enum is declared where highlighted."), FxThread.INSTANCE.call(() -> {
+            selectInNest(bench, "ClassKind", "Enum");
+            return List.of(source.placed());
+        }));
+        assertEquals(List.of(one, List.of()), FxThread.INSTANCE.call(() -> List.of(source.written(), source.within())));
+        final List<List<String>> field = FxThread.INSTANCE.call(() -> {
+            summary(bench).getSelectionModel().select(line(StaticField.class, Cardinality.ZeroOrMore.INSTANCE, 1));
+            return List.of(source.written(), source.within(), List.of(source.placed()));
+        });
+        assertEquals(List.of(List.of(), one, List.of("StaticField of ClassKind$Enum: written somewhere in the lightly"
+                + " highlighted code, which is not read yet.")), field, "a member type's body is not read yet");
+    }
+
+    @Test
+    void theSourceSaysWhereWhatIsSelectedIsWrittenOrWhyItCannot() throws IOException {
+        final Path file = Path.of("src/test/java/com/homing_labs/cq/bench/NestFixture.java");
+        final JavaUnit unit = JavaUnits.INSTANCE.of(NestFixture.class,
+                Optional.of(new JavaSource(file.toUri(), Files.readString(file))));
+        final SourceView source = FxThread.INSTANCE.call(SourceView::new);
+        final ClassName fixture = new ClassName(NestFixture.class.getName());
+        final List<String> whole = highlighted(source, new Selection(unit, NestFixture.class), Optional.empty());
+        assertEquals("NestFixture is declared where highlighted.", whole.getFirst());
+        assertTrue(whole.get(1).startsWith("/** * A class with each kind of class nested in it")
+                && whole.get(1).endsWith("static class Nested { } }"), whole.get(1));
+        final String inner = "class Inner { Object make() { class Made { } return new Made(); } class Deeper { } }";
+        assertEquals(List.of("NestFixture$Inner is declared where highlighted.", inner),
+                highlighted(source, new Selection(unit, NestFixture.Inner.class), Optional.empty()));
+        assertEquals(List.of("NestFixture$Inner$Deeper is declared somewhere in the lightly highlighted code, which is"
+                        + " not read yet.", "within " + inner),
+                highlighted(source, new Selection(unit, NestFixture.Inner.Deeper.class), Optional.empty()));
+        assertEquals(List.of("NestFixture$1Local is declared somewhere in the lightly highlighted code, which is not"
+                        + " read yet.", "within void declaresALocalClass() { class Local { } }"),
+                highlighted(source, new Selection(unit, nested("$1Local")), Optional.empty()));
+        assertEquals(List.of("NestFixture$1 is declared somewhere in the lightly highlighted code, which is not read"
+                        + " yet.", "within anonymous = new Runnable() { @Override public void run() { } }"),
+                highlighted(source, new Selection(unit, nested("$1")), Optional.empty()),
+                "an anonymous class made in a field's initial value");
+        final Selection selected = new Selection(unit, NestFixture.class);
+        assertEquals(List.of("Method.Implementation of NestFixture: written where highlighted.",
+                        "/** A classic switch on another class's enum: javac holds its switch map in a synthetic class"
+                                + " of its own. */ int weekend(final DayOfWeek day) { switch (day) { case SATURDAY:"
+                                + " case SUNDAY: return 1; default: return 0; } }"),
+                highlighted(source, selected, Optional.of(values(unit, fixture, Method.Implementation.INSTANCE,
+                        value -> value instanceof MethodValue method && method.name().equals("weekend")))));
+        assertEquals(List.of("Constructor of NestFixture: written nowhere: the compiler implied or generated it."),
+                highlighted(source, selected, Optional.of(values(unit, fixture, Constructor.INSTANCE, any -> true))));
+        final List<String> code = highlighted(source, selected, Optional.of(values(unit, fixture,
+                Dependency.Code.INSTANCE, any -> true)));
+        assertTrue(code.size() == 1 && code.getFirst().endsWith(" not looked for: dependencies are not placed yet."),
+                code.toString());
+        assertEquals(whole, highlighted(source, selected, Optional.empty()), "with nothing focused, the class");
+    }
+
+    /** What the source says of what it highlights, then the stretches it highlights, each on a line. */
+    private List<String> highlighted(final SourceView source, final Selection selection, final Optional<Focus> focus) {
+        return FxThread.INSTANCE.call(() -> {
+            source.show(Optional.of(selection));
+            source.focus(focus);
+            return Stream.of(Stream.of(source.placed()), source.written().stream().map(this::squashed),
+                            source.within().stream().map(within -> "within " + squashed(within)))
+                    .flatMap(each -> each)
+                    .toList();
+        });
+    }
+
+    /** The values of an object of a class of the unit that pass the test, focused on. */
+    private Focus values(final JavaUnit unit, final ClassName inClass, final ObjectKind object,
+                         final Predicate<Scalar> wanted) {
+        return new Focus.OfValues(inClass, object, new Values(unit.attributes().entry(object).all().stream()
+                .filter(value -> wanted.test(value.object()))
+                .toList()));
+    }
+
+    private Class<?> nested(final String suffix) {
+        return Arrays.stream(NestFixture.class.getNestMembers())
+                .filter(type -> type.getName().equals(NestFixture.class.getName() + suffix))
+                .findFirst().orElseThrow();
+    }
+
+    private String squashed(final String text) {
+        return text.replaceAll("\\s+", " ");
     }
 
     @Test
@@ -343,8 +469,9 @@ class BenchPaneTest {
         for (final Class<?> type : List.of(ClasspathUnits.class, Selection.class, IndexEntry.class,
                 IndexEntry.Package.class, IndexEntry.OfClass.class, UnitTree.class, NestIndex.class,
                 BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
-                SourceView.class, ClasspathEnforcers.class, RulesView.class, RulesView.Applied.class, IndexCell.class,
-                ClassAttributes.class, UnitClasses.class, ValueText.class, TaxonomyView.class,
+                SourceView.class, SourceLines.class, SourceLines.Line.class, Focus.class, Focus.OfClass.class,
+                Focus.OfValues.class, ClasspathEnforcers.class, RulesView.class, RulesView.Applied.class,
+                IndexCell.class, ClassAttributes.class, UnitClasses.class, ValueText.class, TaxonomyView.class,
                 Badge.class, Badges.class, Existence.TopLevel.class, Existence.StaticMember.class,
                 Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class,
                 BenchPane.class, BenchApp.class, Bench.class)) {
@@ -377,6 +504,10 @@ class BenchPaneTest {
         return (TableView<ClassObjectView.Line>) bench.root().lookup("#summary");
     }
 
+    private TableView<?> details(final LaidOut bench) {
+        return (TableView<?>) bench.root().lookup("#details");
+    }
+
     /** A line of the summary for {@code ClassKind.Enum}, a record. */
     private ClassObjectView.Line line(final Class<? extends ObjectKind> object, final Cardinality cardinality,
                                       final long count) {
@@ -407,11 +538,15 @@ class BenchPaneTest {
         return Badges.INSTANCE.of((IndexEntry.OfClass) item.getValue()).stream().map(Badge::text).toList();
     }
 
-    /** The bench over the taxonomy module, with these views, laid out in a scene. */
+    /** The bench over the taxonomy module, with these views and a source, laid out in a scene. */
     private record LaidOut(Parent root) {
 
         LaidOut(final List<BenchView> views) {
-            this(BenchPane.INSTANCE.content(TAXONOMY, BenchPaneTest.class.getClassLoader(), views));
+            this(views, new SourceView());
+        }
+
+        LaidOut(final List<BenchView> views, final SourceView source) {
+            this(BenchPane.INSTANCE.content(TAXONOMY, BenchPaneTest.class.getClassLoader(), views, source));
             new Scene(root, 1280, 800);
             root.applyCss();
             root.layout();

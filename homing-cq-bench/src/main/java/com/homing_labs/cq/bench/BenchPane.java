@@ -3,6 +3,7 @@ package com.homing_labs.cq.bench;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 import javafx.geometry.Insets;
+import javafx.geometry.Orientation;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
@@ -21,16 +22,18 @@ import java.util.Optional;
 
 /**
  * The bench, as an IDE lays it out: the root package to scan at the top; on the left the tree of its units, down to
- * the top-level classes; beside it the index of the selected unit's nest; a tab for each view on the right; and what
- * the scan found at the bottom. Selecting a unit opens its nest and measures all of it; selecting a class in the nest
- * measures that class alone. The tool bar also opens the taxonomy itself, in a window of its own.
+ * the top-level classes, over the index of the selected unit's nest; a tab for each view in the middle; the source on
+ * the right, always in view; and what the scan found at the bottom. Selecting a unit opens its nest and measures all
+ * of it; selecting a class in the nest measures that class alone. The source highlights the class selected, or what a
+ * view has selected of it. The tool bar also opens the taxonomy itself, in a window of its own.
  */
 public record BenchPane() implements StatelessFunctionalObject {
 
     public static final BenchPane INSTANCE = new BenchPane();
 
     /** The bench over the units under {@code rootPackage}, as {@code loader} finds them, with these views. */
-    public Parent content(final String rootPackage, final ClassLoader loader, final List<BenchView> views) {
+    public Parent content(final String rootPackage, final ClassLoader loader, final List<BenchView> views,
+                          final SourceView source) {
         final TreeView<IndexEntry> units = tree("units");
         units.setShowRoot(false);
         final TreeView<IndexEntry> nest = tree("nest");
@@ -40,6 +43,7 @@ public record BenchPane() implements StatelessFunctionalObject {
             final Tab tab = new Tab(view.title(), view.content());
             tab.setClosable(false);
             tabs.getTabs().add(tab);
+            view.onFocus(source::focus);
         });
         final Label nestTitle = title("Nest");
         units.getSelectionModel().selectedItemProperty().addListener((observed, before, selected) -> {
@@ -50,8 +54,10 @@ public record BenchPane() implements StatelessFunctionalObject {
                 nest.getSelectionModel().select(nest.getRoot());
             }
         });
-        nest.getSelectionModel().selectedItemProperty()
-                .addListener((observed, before, selected) -> views.forEach(view -> view.show(selection(selected))));
+        nest.getSelectionModel().selectedItemProperty().addListener((observed, before, selected) -> {
+            views.forEach(view -> view.show(selection(selected)));
+            source.show(selection(selected));
+        });
         final TextField root = new TextField(rootPackage);
         root.setPrefColumnCount(36);
         final Label status = new Label();
@@ -70,6 +76,7 @@ public record BenchPane() implements StatelessFunctionalObject {
             }
             nest.setRoot(null);
             views.forEach(view -> view.show(Optional.empty()));
+            source.show(Optional.empty());
         };
         final Button button = new Button("Scan");
         button.setOnAction(event -> scan.run());
@@ -78,9 +85,12 @@ public record BenchPane() implements StatelessFunctionalObject {
         final Button taxonomy = new Button("Taxonomy");
         taxonomy.setId("taxonomy-window");
         taxonomy.setOnAction(event -> TaxonomyView.INSTANCE.show(taxonomy.getScene().getWindow()));
-        final SplitPane split = new SplitPane(new BorderPane(units, title("Units"), null, null, null),
-                new BorderPane(nest, nestTitle, null, null, null), tabs);
-        split.setDividerPositions(0.2, 0.38);
+        final SplitPane indexes = new SplitPane(new BorderPane(units, title("Units"), null, null, null),
+                new BorderPane(nest, nestTitle, null, null, null));
+        indexes.setOrientation(Orientation.VERTICAL);
+        indexes.setDividerPositions(0.5);
+        final SplitPane split = new SplitPane(indexes, tabs, source.content());
+        split.setDividerPositions(0.18, 0.56);
         return new BorderPane(split, new ToolBar(new Label("Root package"), root, button, taxonomy), null, status,
                 null);
     }

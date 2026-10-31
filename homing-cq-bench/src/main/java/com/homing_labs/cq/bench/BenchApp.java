@@ -25,8 +25,8 @@ public final class BenchApp extends Application implements Mutable {
         stage.setTitle("CQ Bench");
         final ClassLoader loader = loader(arguments.stream().skip(1).toList());
         stage.setScene(new Scene(BenchPane.INSTANCE.content(rootPackage, loader,
-                List.of(new ClassObjectView(), new SourceView(), new RulesView(loader, "com.homing_labs.cq"))),
-                1280, 800));
+                List.of(new ClassObjectView(), new RulesView(loader, "com.homing_labs.cq")), new SourceView()),
+                1600, 900));
         stage.show();
     }
 
