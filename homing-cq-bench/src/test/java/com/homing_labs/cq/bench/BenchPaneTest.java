@@ -32,6 +32,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -78,7 +79,9 @@ class BenchPaneTest {
     void theNestIndexBadgesEachClassByItsKindAndHowItExists() {
         final TreeItem<IndexEntry> fixture = FxThread.INSTANCE.call(
                 () -> NestIndex.INSTANCE.of(JavaUnits.INSTANCE.of(NestFixture.class, Optional.empty())));
-        assertEquals(List.of("1", "Local", "Inner", "Nested"), labels(fixture));
+        assertTrue(Arrays.stream(NestFixture.class.getNestMembers()).anyMatch(Class::isSynthetic),
+                "javac wrote a class of its own into the fixture's nest, for its switch map");
+        assertEquals(List.of("1", "Local", "Inner", "Nested"), labels(fixture), "and the index leaves it out");
         assertEquals(List.of(List.of("C", "anon"), List.of("C", "local"), List.of("C", "inner"),
                         List.of("C", "static")),
                 fixture.getChildren().stream().map(this::badges).toList());

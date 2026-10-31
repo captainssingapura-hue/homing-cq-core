@@ -6,6 +6,7 @@ import com.homing_labs.cq.lang.java.fixtures.AnEnum;
 import com.homing_labs.cq.lang.java.fixtures.AnInterface;
 import com.homing_labs.cq.lang.java.fixtures.Nesting;
 import com.homing_labs.cq.lang.java.fixtures.Plain;
+import com.homing_labs.cq.lang.java.fixtures.Switching;
 import com.homing_labs.cq.lang.java.model.Annotation;
 import com.homing_labs.cq.lang.java.model.Annotations;
 import com.homing_labs.cq.lang.java.model.AppliedAnnotation;
@@ -86,6 +87,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.AbstractList;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -166,6 +168,19 @@ class ClassFileAttributesTest {
         assertEquals(List.of(new ClassName(name + "$1$1")),
                 values(anonymous.getFirst().attributes(), AnonymousClass.INSTANCE, EnclosedClass.class).stream()
                         .map(EnclosedClass::name).toList());
+    }
+
+    @Test
+    void aClassTheCompilerGeneratedIsNoneOfTheClasss() {
+        final List<Class<?>> generated = Arrays.stream(Switching.class.getNestMembers())
+                .filter(Class::isSynthetic)
+                .toList();
+        assertEquals(1, generated.size(), "javac writes a class of its own to hold the switch map");
+        assertTrue(generated.getFirst().isAnonymousClass(), "which the JDK takes for an anonymous class");
+        assertEquals(List.of(new ClassName(Switching.class.getName() + "$1")),
+                values(ClassFileAttributes.INSTANCE.of(Switching.class), AnonymousClass.INSTANCE, EnclosedClass.class)
+                        .stream().map(EnclosedClass::name).toList(),
+                "only the anonymous class the source declares");
     }
 
     /** A class with local and anonymous classes outside its methods, and one anonymous class in another. */

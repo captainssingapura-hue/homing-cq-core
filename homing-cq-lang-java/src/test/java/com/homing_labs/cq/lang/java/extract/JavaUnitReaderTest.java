@@ -12,6 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.FileSystem;
@@ -21,6 +25,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -51,6 +56,7 @@ class JavaUnitReaderTest {
                         FIXTURES + "Nesting",
                         FIXTURES + "Plain",
                         FIXTURES + "SecondInFile",
+                        FIXTURES + "Switching",
                         FIXTURES + "TwoInOneFile",
                         FIXTURES + "deeper.Deep"),
                 names(units));
@@ -100,6 +106,24 @@ class JavaUnitReaderTest {
                 Arrays.stream(unit("Nesting").type().getNestMembers()).map(Class::getName).sorted().toList());
         assertEquals(List.of(FIXTURES + "AnEnum", FIXTURES + "AnEnum$1"),
                 Arrays.stream(unit("AnEnum").type().getNestMembers()).map(Class::getName).sorted().toList());
+    }
+
+    @Test
+    void aClassTheCompilerGeneratedIsNoUnit(@TempDir final Path classes) throws Exception {
+        final Path plain = classes.resolve(Plain.class.getName().replace('.', '/') + ".class");
+        Files.createDirectories(plain.getParent());
+        try (InputStream in = Plain.class.getResourceAsStream(Plain.class.getSimpleName() + ".class")) {
+            Files.copy(in, plain);
+        }
+        Files.write(plain.resolveSibling("Generated.class"), ClassFile.of().build(
+                ClassDesc.of(FIXTURES + "Generated"), builder -> builder
+                        .withFlags(ClassFile.ACC_SUPER | ClassFile.ACC_SYNTHETIC)
+                        .withSuperclass(ConstantDescs.CD_Object)));
+        try (URLClassLoader loader = new URLClassLoader(new URL[]{classes.toUri().toURL()},
+                ClassLoader.getPlatformClassLoader())) {
+            assertEquals(List.of(Plain.class.getName()), names(JavaUnitReader.INSTANCE.read(
+                    new JavaCodeBase(classes.toUri(), Optional.empty()), loader)));
+        }
     }
 
     @Test

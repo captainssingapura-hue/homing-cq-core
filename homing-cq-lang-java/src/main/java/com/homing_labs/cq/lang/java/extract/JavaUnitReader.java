@@ -1,6 +1,7 @@
 package com.homing_labs.cq.lang.java.extract;
 
 import com.homing_labs.cq.lang.java.def.JavaSource;
+import com.homing_labs.cq.lang.java.taxonomy.scan.ClassScanner;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import hue.captains.singapura.tao.ontology.Scalar;
@@ -28,7 +29,7 @@ import java.util.stream.Stream;
  * <p>Build-time code: this is where classes are loaded by name. Each class file is first read with the Class-File API,
  * to tell a top-level class from a nested one and to learn which file declares it (its {@code SourceFile}), so only
  * top-level classes are loaded. {@code module-info} and {@code package-info} declare no class and are skipped, as is
- * everything under {@code META-INF}.</p>
+ * everything under {@code META-INF} and any class the compiler generated: code no one wrote is not checked.</p>
  */
 public record JavaUnitReader() implements StatelessFunctionalObject {
 
@@ -75,7 +76,10 @@ public record JavaUnitReader() implements StatelessFunctionalObject {
         return name.endsWith(".class") && !name.equals("module-info.class") && !name.equals("package-info.class");
     }
 
-    /** The class a class file declares, when it is a top-level class; nested classes belong to their top-level one. */
+    /**
+     * The class a class file declares, when it is a top-level class a source declared; nested classes belong to their
+     * top-level one.
+     */
     private Optional<TopLevelClass> topLevel(final Path classFile) {
         final ClassModel model = ClassFile.of().parse(bytes(classFile));
         final String name = model.thisClass().asInternalName();
@@ -83,7 +87,7 @@ public record JavaUnitReader() implements StatelessFunctionalObject {
                 .map(inner -> inner.classes().stream()
                         .anyMatch(entry -> entry.innerClass().asInternalName().equals(name)))
                 .orElse(false);
-        if (nested) {
+        if (nested || ClassScanner.INSTANCE.isGenerated(model)) {
             return Optional.empty();
         }
         final String sourceFile = model.findAttribute(Attributes.sourceFile())

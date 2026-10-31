@@ -70,7 +70,6 @@ import java.lang.classfile.ClassSignature;
 import java.lang.classfile.FieldModel;
 import java.lang.classfile.MethodModel;
 import java.lang.classfile.Signature;
-import java.lang.classfile.Signature.TypeArg.Bounded.WildcardIndicator;
 import java.lang.classfile.attribute.EnclosingMethodAttribute;
 import java.lang.classfile.attribute.InnerClassInfo;
 import java.lang.classfile.attribute.SignatureAttribute;
@@ -91,7 +90,8 @@ import java.util.stream.Stream;
  * local and anonymous classes, at any depth - through the class loader that loaded it, loading nothing more. Each
  * member is put under the object of the taxonomy the {@link ClassScanner} says it is, and {@link Entries} shapes what
  * was found into the attributes of the class's kind. A local or anonymous class is the class's when its own class file
- * says it is declared in the class's code. The class file has no source, so no value gets one here.
+ * says it is declared in the class's code; a class the compiler generated is none of the class's, as the scanner
+ * lists none. The class file has no source, so no value gets one here.
  */
 public record ClassFileAttributes() implements StatelessFunctionalObject {
 
@@ -395,18 +395,18 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
         };
     }
 
-    /**
-     * A type argument, by its wildcard. Guards rather than a switch on the indicator: for that, javac would write a
-     * synthetic class holding only a switch map, with no constructor, which the taxonomy has no place for.
-     */
+    /** A type argument, by its wildcard. */
     private TypeArgument typeArgument(final Signature.TypeArg argument) {
         return switch (argument) {
             case Signature.TypeArg.Unbounded _ -> TypeArgument.Unbounded.INSTANCE;
-            case Signature.TypeArg.Bounded bounded when bounded.wildcardIndicator() == WildcardIndicator.EXTENDS ->
-                    new TypeArgument.Extends(genericType(bounded.boundType()));
-            case Signature.TypeArg.Bounded bounded when bounded.wildcardIndicator() == WildcardIndicator.SUPER ->
-                    new TypeArgument.Super(genericType(bounded.boundType()));
-            case Signature.TypeArg.Bounded bounded -> new TypeArgument.Exact(genericType(bounded.boundType()));
+            case Signature.TypeArg.Bounded bounded -> {
+                final TypeUse bound = genericType(bounded.boundType());
+                yield switch (bounded.wildcardIndicator()) {
+                    case EXTENDS -> new TypeArgument.Extends(bound);
+                    case SUPER -> new TypeArgument.Super(bound);
+                    case NONE -> new TypeArgument.Exact(bound);
+                };
+            }
         };
     }
 

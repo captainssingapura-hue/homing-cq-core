@@ -6,7 +6,9 @@ import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.ClassProperty;
 import com.homing_labs.cq.lang.java.taxonomy.Dependency;
 import com.homing_labs.cq.lang.java.taxonomy.LocalClass;
+import com.homing_labs.cq.lang.java.taxonomy.MemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.RecordComponent;
+import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
 import com.homing_labs.cq.lang.java.taxonomy.TypeParameter;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
@@ -15,12 +17,17 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.classfile.ClassFile;
+import java.lang.classfile.attribute.InnerClassInfo;
+import java.lang.classfile.attribute.InnerClassesAttribute;
 import java.lang.classfile.attribute.RecordAttribute;
 import java.lang.classfile.attribute.RecordComponentInfo;
 import java.lang.constant.ClassDesc;
 import java.lang.constant.ConstantDescs;
+import java.lang.reflect.AccessFlag;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -85,6 +92,39 @@ class ClassScannerTest {
                         .map(Occurrence::kind)
                         .noneMatch(kind -> kind instanceof LocalClass || kind instanceof AnonymousClass),
                 "the enclosing class's own file cannot tell its local classes from deeper ones");
+    }
+
+    @Test
+    void aClassTheCompilerGeneratedIsNoneOfTheTaxonomys() throws IOException {
+        final List<Class<?>> generated = Arrays.stream(SwitchFixture.class.getNestMembers())
+                .filter(Class::isSynthetic)
+                .toList();
+        assertEquals(1, generated.size(), "javac writes a class of its own to hold the switch map");
+        assertEquals(List.of(), ClassScanner.INSTANCE.scan(classFile(generated.getFirst())));
+        assertEquals(List.of(internalName(SwitchFixture.class) + "$1"), ClassScanner.INSTANCE
+                        .codeClassCandidates(ClassFile.of().parse(classFile(SwitchFixture.class))).stream()
+                        .map(candidate -> candidate.innerClass().asInternalName())
+                        .toList(),
+                "only the anonymous class the source declares");
+    }
+
+    @Test
+    void aMemberClassTheCompilerGeneratedIsNoMember() {
+        final ClassDesc outer = ClassDesc.of("handbuilt.Outer");
+        final byte[] classFile = ClassFile.of().build(outer, builder -> builder
+                .withFlags(ClassFile.ACC_PUBLIC | ClassFile.ACC_SUPER)
+                .withSuperclass(ConstantDescs.CD_Object)
+                .with(InnerClassesAttribute.of(
+                        InnerClassInfo.of(outer.nested("Declared"), Optional.of(outer), Optional.of("Declared"),
+                                AccessFlag.STATIC),
+                        InnerClassInfo.of(outer.nested("Generated"), Optional.of(outer), Optional.of("Generated"),
+                                AccessFlag.STATIC, AccessFlag.SYNTHETIC))));
+        assertEquals(List.of(new Occurrence.OfMember("handbuilt/Outer", StaticMemberClass.INSTANCE,
+                        "handbuilt/Outer$Declared")),
+                ClassScanner.INSTANCE.scan(classFile).stream()
+                        .filter(occurrence -> occurrence.kind() instanceof StaticMemberClass
+                                || occurrence.kind() instanceof MemberClass)
+                        .toList());
     }
 
     @Test

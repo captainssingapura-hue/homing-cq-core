@@ -38,7 +38,8 @@ import java.util.stream.Stream;
 /**
  * Finds every object of the taxonomy in a class file: the class itself, of its kind, and each of its own members. It
  * reads the class file alone, loading nothing, so it finds what the compiler implied and generated as well as what the
- * source declared - and nothing inherited.
+ * source declared - and nothing inherited. A class the compiler generated whole is the exception: no source declares
+ * it, so it has no place in the taxonomy, and it is skipped wherever it is met.
  */
 public record ClassScanner() implements StatelessFunctionalObject {
 
@@ -46,10 +47,14 @@ public record ClassScanner() implements StatelessFunctionalObject {
 
     /**
      * The objects in one class file: the class, then its members, then its dependencies. A local or anonymous class is
-     * found in its own class file, which names the class whose code declares it, and so is listed as that class's.
+     * found in its own class file, which names the class whose code declares it, and so is listed as that class's. A
+     * class the compiler generated has none.
      */
     public List<Occurrence> scan(final byte[] classFile) {
         final ClassModel model = ClassFile.of().parse(classFile);
+        if (isGenerated(model)) {
+            return List.of();
+        }
         final String name = model.thisClass().asInternalName();
         final ClassKind kind = kindOf(model);
         final List<Occurrence> found = new ArrayList<>();
@@ -119,6 +124,16 @@ public record ClassScanner() implements StatelessFunctionalObject {
     }
 
     /**
+     * Whether the class a class file declares is one the compiler generated, with no source behind it: flagged
+     * synthetic, as the JDK reads a class's flags. javac writes one into a top-level class whose code has a classic
+     * switch on an enum declared outside it, to hold the switch maps; the JDK takes it for an anonymous class, though
+     * no code makes it.
+     */
+    public boolean isGenerated(final ClassModel model) {
+        return classFlagsOf(model).contains(AccessFlag.SYNTHETIC);
+    }
+
+    /**
      * The class whose code declares the local or anonymous class a class file declares, by its internal name, as the
      * class file's {@code EnclosingMethod} names it; nothing for any other class.
      */
@@ -138,8 +153,9 @@ public record ClassScanner() implements StatelessFunctionalObject {
 
     /**
      * The classes that may be local or anonymous classes of the class a class file declares: those its
-     * {@code InnerClasses} lists with no outer class, but itself. Some of them are declared deeper - in the code of
-     * another local or anonymous class - which only their own {@link #enclosingClassOf} tells.
+     * {@code InnerClasses} lists with no outer class, but itself and those the compiler generated. Some of them are
+     * declared deeper - in the code of another local or anonymous class - which only their own
+     * {@link #enclosingClassOf} tells.
      */
     public List<InnerClassInfo> codeClassCandidates(final ClassModel model) {
         final String name = model.thisClass().asInternalName();
@@ -147,6 +163,7 @@ public record ClassScanner() implements StatelessFunctionalObject {
                 .map(innerClasses -> innerClasses.classes().stream()
                         .filter(inner -> inner.outerClass().isEmpty())
                         .filter(inner -> !inner.innerClass().asInternalName().equals(name))
+                        .filter(this::declared)
                         .toList())
                 .orElse(List.of());
     }
@@ -160,15 +177,24 @@ public record ClassScanner() implements StatelessFunctionalObject {
                         .findFirst());
     }
 
-    /** The classes that are members of the class a class file declares, as its {@code InnerClasses} lists them. */
+    /**
+     * The classes that are members of the class a class file declares, as its {@code InnerClasses} lists them, but
+     * those the compiler generated.
+     */
     public List<InnerClassInfo> memberClasses(final ClassModel model) {
         final String name = model.thisClass().asInternalName();
         return model.findAttribute(Attributes.innerClasses())
                 .map(innerClasses -> innerClasses.classes().stream()
                         .filter(inner -> inner.outerClass().map(ClassEntry::asInternalName)
                                 .filter(name::equals).isPresent())
+                        .filter(this::declared)
                         .toList())
                 .orElse(List.of());
+    }
+
+    /** Whether a class an {@code InnerClasses} entry lists is one a source declared, not one the compiler generated. */
+    private boolean declared(final InnerClassInfo entry) {
+        return !entry.flags().contains(AccessFlag.SYNTHETIC);
     }
 
     /** Which kind of field a field is: an enum constant, which only it is flagged as, or else static or instance. */

@@ -15,8 +15,8 @@ import java.util.Map;
 /**
  * The index of a unit's nest, the bench's second layer: the unit's top-level class at the top, and under each class the
  * classes declared in it - member classes, and local and anonymous ones - by their names in the class file, all open,
- * each with its kind and how it exists there. Selecting the top measures the whole nest; selecting a nested class,
- * that class alone.
+ * each with its kind and how it exists there. A class the compiler generated is no class of the nest here, though the
+ * JDK lists it as one. Selecting the top measures the whole nest; selecting a nested class, that class alone.
  */
 public record NestIndex() implements StatelessFunctionalObject {
 
@@ -27,7 +27,7 @@ public record NestIndex() implements StatelessFunctionalObject {
         final Class<?> top = unit.type();
         final TreeItem<IndexEntry> root = item(unit, top);
         final List<Class<?>> nested = Arrays.stream(top.getNestMembers())
-                .filter(type -> type != top)
+                .filter(type -> type != top && !type.isSynthetic())
                 .sorted(Comparator.comparing(Class::getName))
                 .toList();
         final Map<Class<?>, TreeItem<IndexEntry>> items = new HashMap<>(Map.of(top, root));
