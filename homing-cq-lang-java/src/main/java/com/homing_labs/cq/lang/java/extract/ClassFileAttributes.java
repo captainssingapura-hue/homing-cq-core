@@ -159,16 +159,13 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
                     method.findAttribute(java.lang.classfile.Attributes.signature())
                             .map(SignatureAttribute::asMethodSignature);
             switch (method.methodName().stringValue()) {
-                case "<init>" -> add(found, Constructor.INSTANCE, new ConstructorValue(parameters,
+                case "<init>" -> add(found, Constructor.INSTANCE, new ConstructorValue(parameters, thrown(method),
                         methodSignature.map(this::constructorSignature), visibility(flags), arity(flags),
                         origin(flags), annotations(method), parameterAnnotations(method)));
                 case "<clinit>" -> add(found, StaticInitialiser.INSTANCE, new InitialiserValue(origin(flags)));
                 default -> add(found, ClassScanner.INSTANCE.methodKindOf(parsed, method), new MethodValue(
                         method.methodName().stringValue(), parameters, result(method.methodTypeSymbol().returnType()),
-                        new ClassNames(method.findAttribute(java.lang.classfile.Attributes.exceptions())
-                                .map(thrown -> thrown.exceptions().stream().map(this::name).toList())
-                                .orElse(List.of())),
-                        methodSignature.map(this::methodSignature), visibility(flags),
+                        thrown(method), methodSignature.map(this::methodSignature), visibility(flags),
                         flags.contains(AccessFlag.FINAL) ? Overridability.Final.INSTANCE
                                 : Overridability.Overridable.INSTANCE,
                         flags.contains(AccessFlag.SYNCHRONIZED) ? Synchronisation.Synchronised.INSTANCE
@@ -238,6 +235,13 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
                 .ifPresent(invisible -> invisible.annotations().forEach(annotation -> applied.add(
                         new AppliedAnnotation(annotation(annotation), Retention.InClassFile.INSTANCE))));
         return new Annotations(applied);
+    }
+
+    /** The classes a method or a constructor throws, as its {@code Exceptions} attribute names them. */
+    private ClassNames thrown(final MethodModel method) {
+        return new ClassNames(method.findAttribute(java.lang.classfile.Attributes.exceptions())
+                .map(exceptions -> exceptions.exceptions().stream().map(this::name).toList())
+                .orElse(List.of()));
     }
 
     /** The annotations a method or a constructor keeps on its parameters, by position, those kept at runtime first. */

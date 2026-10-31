@@ -4,6 +4,7 @@ import com.homing_labs.cq.lang.java.model.Annotation;
 import com.homing_labs.cq.lang.java.model.Annotations;
 import com.homing_labs.cq.lang.java.model.AppliedAnnotation;
 import com.homing_labs.cq.lang.java.model.ClassName;
+import com.homing_labs.cq.lang.java.model.ClassNames;
 import com.homing_labs.cq.lang.java.model.ConstructorSignature;
 import com.homing_labs.cq.lang.java.model.ConstructorValue;
 import com.homing_labs.cq.lang.java.model.ElementValue;
@@ -22,11 +23,13 @@ import com.homing_labs.cq.lang.java.model.TypeArgument;
 import com.homing_labs.cq.lang.java.model.TypeParameterValue;
 import com.homing_labs.cq.lang.java.model.TypeParameters;
 import com.homing_labs.cq.lang.java.model.TypeUse;
+import com.homing_labs.cq.lang.java.model.TypeUses;
 import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -63,6 +66,7 @@ public record ValueText() implements StatelessFunctionalObject {
                     + parameters(method.signature().map(MethodSignature::parameters).orElse(method.parameters()))
                     + ": " + method.signature().map(MethodSignature::result).orElse(method.result())
                     .map(this::type).orElse("void")
+                    + thrown(method.signature().map(MethodSignature::thrown), method.thrown())
                     + method.defaultValue().map(given -> " default " + value(given)).orElse("") + " - "
                     + words(method.visibility(), method.overridability(), method.synchronisation(), method.arity(),
                     method.origin());
@@ -70,6 +74,7 @@ public record ValueText() implements StatelessFunctionalObject {
                     + constructor.signature().map(signature -> typeParameters(signature.typeParameters())).orElse("")
                     + parameters(constructor.signature().map(ConstructorSignature::parameters)
                     .orElse(constructor.parameters()))
+                    + thrown(constructor.signature().map(ConstructorSignature::thrown), constructor.thrown())
                     + " - " + words(constructor.visibility(), constructor.arity(), constructor.origin());
             case InitialiserValue initialiser -> words(initialiser.origin());
             default -> word(value);
@@ -121,6 +126,18 @@ public record ValueText() implements StatelessFunctionalObject {
 
     private String parameters(final Parameters parameters) {
         return parameters.items().stream().map(this::type).collect(Collectors.joining(", ", "(", ")"));
+    }
+
+    /**
+     * What a method or a constructor throws, after its result or its parameters: {@code  throws X, IOException}. As
+     * declared when its signature names them - javac then names them all - and as it runs when not; nothing when it
+     * throws nothing.
+     */
+    private String thrown(final Optional<TypeUses> declared, final ClassNames running) {
+        final List<String> thrown = declared.filter(uses -> !uses.items().isEmpty())
+                .map(uses -> uses.items().stream().map(this::type).toList())
+                .orElseGet(() -> running.items().stream().map(ClassName::simpleName).toList());
+        return thrown.isEmpty() ? "" : " throws " + String.join(", ", thrown);
     }
 
     /** A type as Java writes it, without packages: {@code Map<String, ? super Integer>}, {@code Box<T>.Inner<U>}. */

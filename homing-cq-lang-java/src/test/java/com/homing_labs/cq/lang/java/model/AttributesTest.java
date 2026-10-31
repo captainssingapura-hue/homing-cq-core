@@ -35,8 +35,8 @@ class AttributesTest {
     private static final ParameterAnnotations NONE_ON_PARAMETERS = new ParameterAnnotations(List.of());
 
     private static final WithSource<? extends Scalar> CONSTRUCTOR = new WithSource<>(new ConstructorValue(
-            new Parameters(List.of()), Optional.empty(), Visibility.Public.INSTANCE, Arity.Fixed.INSTANCE,
-            Origin.Declared.INSTANCE, NONE, NONE_ON_PARAMETERS), Optional.empty());
+            new Parameters(List.of()), new ClassNames(List.of()), Optional.empty(), Visibility.Public.INSTANCE,
+            Arity.Fixed.INSTANCE, Origin.Declared.INSTANCE, NONE, NONE_ON_PARAMETERS), Optional.empty());
 
     /** A value of each type an object of the taxonomy can hold, but a nested class. */
     private static final Map<Class<? extends Scalar>, Scalar> SAMPLES = Map.of(

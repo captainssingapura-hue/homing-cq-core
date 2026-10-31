@@ -118,8 +118,8 @@ class ClassFileAttributesTest {
         assertEquals(new Entry.ZeroOrOne(Superclass.INSTANCE,
                         Optional.of(new WithSource<>(named(Object.class), Optional.empty()))),
                 plain.entry(Superclass.INSTANCE));
-        assertEquals(List.of(new ConstructorValue(new Parameters(List.of()), Optional.empty(),
-                        Visibility.Public.INSTANCE, Arity.Fixed.INSTANCE, Origin.Declared.INSTANCE,
+        assertEquals(List.of(new ConstructorValue(new Parameters(List.of()), new ClassNames(List.of()),
+                        Optional.empty(), Visibility.Public.INSTANCE, Arity.Fixed.INSTANCE, Origin.Declared.INSTANCE,
                         new Annotations(List.of()), new ParameterAnnotations(List.of()))),
                 values(plain, Constructor.INSTANCE, ConstructorValue.class));
         assertEquals(new Entry.ZeroOrOne(StaticInitialiser.INSTANCE, Optional.empty()),
@@ -493,12 +493,13 @@ class ClassFileAttributesTest {
         final Attributes generic = ClassFileAttributes.INSTANCE.of(Generic.class);
         final ConstructorValue constructor = values(generic, Constructor.INSTANCE, ConstructorValue.class).getFirst();
         assertEquals(new Parameters(List.of(named(Function.class))), constructor.parameters());
+        assertEquals(new ClassNames(List.of(new ClassName(Exception.class.getName()))), constructor.thrown());
         assertEquals(Optional.of(new ConstructorSignature(
                         new TypeParameters(List.of(
                                 new TypeParameterValue("R", new TypeUses(List.of(named(Object.class)))))),
                         new Parameters(List.of(parameterized(Function.class, new TypeArgument.Super(variable("T")),
                                 exact(variable("R"))))),
-                        new TypeUses(List.of()))),
+                        new TypeUses(List.of(variable("E"))))),
                 constructor.signature());
         final MethodValue first = values(generic, Method.Implementation.INSTANCE, MethodValue.class).stream()
                 .filter(method -> method.name().equals("first")).findFirst().orElseThrow();
@@ -517,6 +518,9 @@ class ClassFileAttributesTest {
                 inner.parameters().items(), "an inner class's constructor runs with its outer instance first");
         assertEquals(List.of(variable("U"), parameterized(List.class, exact(variable("T")))),
                 inner.signature().orElseThrow().parameters().items(), "its signature leaves the outer instance out");
+        assertEquals(new ClassNames(List.of(new ClassName(IOException.class.getName()))), inner.thrown());
+        assertEquals(List.of(), inner.signature().orElseThrow().thrown().items(),
+                "a signature names what is thrown only when a type variable is");
     }
 
     /** A generic class, with bounded type parameters, generic supertypes, and generic members. */
@@ -534,7 +538,7 @@ class ClassFileAttributesTest {
 
         private int plain;
 
-        <R> Generic(final Function<? super T, R> mapping) {
+        <R> Generic(final Function<? super T, R> mapping) throws E {
         }
 
         <X extends Throwable> T first() throws X, E {
@@ -543,7 +547,7 @@ class ClassFileAttributesTest {
 
         class Inner<U> {
 
-            Inner(final U only, final List<T> all) {
+            Inner(final U only, final List<T> all) throws IOException {
             }
         }
     }

@@ -8,7 +8,7 @@ import java.util.function.Supplier;
  * <ul>
  *     <li>type parameter: {@code T}; superclass: {@link Object}, which its source does not name; superinterface:
  *     {@link SampleInterface}, given {@code T}</li>
- *     <li>constructor: one; static initialiser: the static block</li>
+ *     <li>constructor: one, which declares what it throws; static initialiser: the static block</li>
  *     <li>class object - fields: {@code PREFIX} and {@code OK}; implementation: {@code prefixed}; native
  *     implementation: {@code ticks}; member class: {@code Registry}</li>
  *     <li>instances - field: {@code id}; declaration: {@code size}; implementations: {@code label}, and
@@ -34,7 +34,10 @@ public abstract sealed class SampleAbstractClass<T> implements SampleInterface<T
 
     protected final String id;
 
-    protected SampleAbstractClass(final String id) {
+    protected SampleAbstractClass(final String id) throws IllegalArgumentException {
+        if (id.isBlank()) {
+            throw new IllegalArgumentException("blank id");
+        }
         this.id = id;
     }
 
