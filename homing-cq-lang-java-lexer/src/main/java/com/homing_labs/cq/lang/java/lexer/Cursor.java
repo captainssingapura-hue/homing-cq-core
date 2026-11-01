@@ -6,7 +6,8 @@ import java.util.List;
 
 /**
  * A place in a source text, moved forward over it a character at a time. It reads the text with its Unicode escapes
- * translated, and tells for each character where in the text as written it came from.
+ * translated, tells for each character where in the text as written it came from, and reports there what is found
+ * wrong.
  */
 final class Cursor implements Mutable {
 
@@ -15,9 +16,12 @@ final class Cursor implements Mutable {
     /** Where each character of the text was written, and where the text ends; none when nothing was translated. */
     private final int[] offsets;
 
+    private final List<Diagnostic> diagnostics;
+
     private int at;
 
     Cursor(final String written, final List<Diagnostic> diagnostics) {
+        this.diagnostics = diagnostics;
         if (written.indexOf('\\') < 0) {
             text = written;
             offsets = null;
@@ -79,5 +83,10 @@ final class Cursor implements Mutable {
     /** Where the character at the mark was written: its offset in the text as it was read. */
     int written(final int mark) {
         return offsets == null ? mark : offsets[mark];
+    }
+
+    /** An error over the characters from one mark up to another, where they were written. */
+    void error(final int from, final int to, final String message) {
+        diagnostics.add(new Diagnostic(Severity.Error.INSTANCE, message, written(from), written(to)));
     }
 }
