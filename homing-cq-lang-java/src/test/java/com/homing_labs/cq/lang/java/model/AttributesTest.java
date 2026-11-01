@@ -25,10 +25,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class AttributesTest {
 
     private static final WithSource<? extends Scalar> OBJECT =
-            new WithSource<>(new ClassName("java.lang.Object"), Optional.empty());
+            new WithSource<>(new ClassName("java.lang.Object"), new ProcessedSource.Unavailable<>());
 
     private static final WithSource<? extends Scalar> OBJECT_TYPE =
-            new WithSource<>(new TypeUse.Named(new ClassName("java.lang.Object")), Optional.empty());
+            new WithSource<>(new TypeUse.Named(new ClassName("java.lang.Object")), new ProcessedSource.Unavailable<>());
 
     private static final Annotations NONE = new Annotations(List.of());
 
@@ -36,7 +36,8 @@ class AttributesTest {
 
     private static final WithSource<? extends Scalar> CONSTRUCTOR = new WithSource<>(new ConstructorValue(
             new Parameters(List.of()), new ClassNames(List.of()), Optional.empty(), Visibility.Public.INSTANCE,
-            Arity.Fixed.INSTANCE, Origin.Declared.INSTANCE, NONE, NONE_ON_PARAMETERS), Optional.empty());
+            Arity.Fixed.INSTANCE, Origin.Declared.INSTANCE, NONE, NONE_ON_PARAMETERS),
+            new ProcessedSource.Unavailable<>());
 
     /** A value of each type an object of the taxonomy can hold, but a nested class. */
     private static final Map<Class<? extends Scalar>, Scalar> SAMPLES = Map.of(
@@ -140,7 +141,7 @@ class AttributesTest {
         for (final Placement placement : Taxonomy.INSTANCE.placements(kind)) {
             if (!placement.cardinality().allows(0)) {
                 found.put(placement.object(), List.of(new WithSource<>(
-                        SAMPLES.get(ValueTypes.INSTANCE.of(placement.object())), Optional.empty())));
+                        SAMPLES.get(ValueTypes.INSTANCE.of(placement.object())), new ProcessedSource.Unavailable<>())));
             }
         }
         return found;

@@ -1,7 +1,7 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.lang.java.def.SourceSpan;
-import com.homing_labs.cq.lang.java.def.SourceSpans;
+import com.homing_labs.cq.lang.java.model.CodeBlocks;
+import com.homing_labs.cq.lang.java.outline.CodeBlock;
 import hue.captains.singapura.tao.ontology.Mutable;
 import hue.captains.singapura.tao.ontology.Scalar;
 import javafx.geometry.Bounds;
@@ -39,9 +39,9 @@ public final class SourceLines implements Mutable {
 
     private String text = "";
 
-    private List<SourceSpan> written = List.of();
+    private List<CodeBlock> written = List.of();
 
-    private List<SourceSpan> within = List.of();
+    private List<CodeBlock> within = List.of();
 
     /** How wide the line numbers are: as wide as the last line's, and the space after it. */
     private double numberWidth;
@@ -71,13 +71,13 @@ public final class SourceLines implements Mutable {
     }
 
     /** Highlights the stretches of the text shown, and brings the first of them into view. */
-    public void highlight(final SourceSpans written, final SourceSpans within) {
+    public void highlight(final CodeBlocks written, final CodeBlocks within) {
         this.written = written.items();
         this.within = within.items();
         list.refresh();
-        final List<SourceSpan> first = !this.written.isEmpty() ? this.written : this.within;
+        final List<CodeBlock> first = !this.written.isEmpty() ? this.written : this.within;
         if (!first.isEmpty()) {
-            list.scrollTo(Math.max(0, lineOf(first.getFirst().start()) - 2));
+            list.scrollTo(Math.max(0, lineOf(first.getFirst().offset()) - 2));
         }
     }
 
@@ -88,12 +88,12 @@ public final class SourceLines implements Mutable {
 
     /** The stretches highlighted as where something is written, as they read. */
     public List<String> written() {
-        return written.stream().map(span -> text.substring(span.start(), span.end())).toList();
+        return written.stream().map(CodeBlock::text).toList();
     }
 
     /** The stretches highlighted, lighter, as where something is written somewhere within, as they read. */
     public List<String> within() {
-        return within.stream().map(span -> text.substring(span.start(), span.end())).toList();
+        return within.stream().map(CodeBlock::text).toList();
     }
 
     /** The lines of a text, each without its line terminator: {@code \n}, {@code \r\n} or {@code \r}. */
@@ -154,13 +154,18 @@ public final class SourceLines implements Mutable {
         return covers(within, character) ? WITHIN : "transparent";
     }
 
-    private boolean covers(final List<SourceSpan> spans, final int character) {
-        return spans.stream().anyMatch(span -> span.start() <= character && character < span.end());
+    private boolean covers(final List<CodeBlock> spans, final int character) {
+        return spans.stream().anyMatch(span -> span.offset() <= character && character < end(span));
     }
 
-    private boolean touches(final List<SourceSpan> spans, final Line line) {
-        return spans.stream().anyMatch(span -> span.start() < Math.max(line.end(), line.start() + 1)
-                && line.start() < span.end());
+    /** Where a block ends in the file: past its last character. */
+    private int end(final CodeBlock block) {
+        return block.offset() + block.text().length();
+    }
+
+    private boolean touches(final List<CodeBlock> spans, final Line line) {
+        return spans.stream().anyMatch(span -> span.offset() < Math.max(line.end(), line.start() + 1)
+                && line.start() < end(span));
     }
 
     /**
@@ -190,12 +195,12 @@ public final class SourceLines implements Mutable {
             final HBox row = new HBox(number(line));
             row.setAlignment(Pos.CENTER_LEFT);
             final TreeSet<Integer> cuts = new TreeSet<>(List.of(line.start(), line.end()));
-            for (final SourceSpan span : spans()) {
-                if (span.start() > line.start() && span.start() < line.end()) {
-                    cuts.add(span.start());
+            for (final CodeBlock span : spans()) {
+                if (span.offset() > line.start() && span.offset() < line.end()) {
+                    cuts.add(span.offset());
                 }
-                if (span.end() > line.start() && span.end() < line.end()) {
-                    cuts.add(span.end());
+                if (end(span) > line.start() && end(span) < line.end()) {
+                    cuts.add(end(span));
                 }
             }
             Integer from = cuts.first();
@@ -205,8 +210,8 @@ public final class SourceLines implements Mutable {
             setGraphic(row);
         }
 
-        private List<SourceSpan> spans() {
-            final List<SourceSpan> all = new ArrayList<>(written);
+        private List<CodeBlock> spans() {
+            final List<CodeBlock> all = new ArrayList<>(written);
             all.addAll(within);
             return all;
         }
@@ -221,7 +226,8 @@ public final class SourceLines implements Mutable {
             number.setPadding(new Insets(0, 10, 0, 0));
             final String mark = touches(written, line) ? WRITTEN : touches(within, line) ? WITHIN : "transparent";
             number.setStyle("-fx-text-fill: " + NUMBER + "; -fx-background-color: -fx-control-inner-background;"
-                    + " -fx-border-color: transparent " + mark + " transparent transparent; -fx-border-width: 0 3 0 0;");
+                    + " -fx-border-color: transparent " + mark + " transparent transparent;"
+                    + " -fx-border-width: 0 3 0 0;");
             return number;
         }
 

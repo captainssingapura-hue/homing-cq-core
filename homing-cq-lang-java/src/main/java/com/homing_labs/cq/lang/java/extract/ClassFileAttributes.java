@@ -31,6 +31,7 @@ import com.homing_labs.cq.lang.java.model.ParameterAnnotations;
 import com.homing_labs.cq.lang.java.model.Parameters;
 import com.homing_labs.cq.lang.java.model.Persistence;
 import com.homing_labs.cq.lang.java.model.PrimitiveType;
+import com.homing_labs.cq.lang.java.model.ProcessedSource;
 import com.homing_labs.cq.lang.java.model.RecordComponentValue;
 import com.homing_labs.cq.lang.java.model.Retention;
 import com.homing_labs.cq.lang.java.model.Synchronisation;
@@ -91,7 +92,7 @@ import java.util.stream.Stream;
  * member is put under the object of the taxonomy the {@link ClassScanner} says it is, and {@link Entries} shapes what
  * was found into the attributes of the class's kind. A local or anonymous class is the class's when its own class file
  * says it is declared in the class's code; a class the compiler generated is none of the class's, as the scanner
- * lists none. The class file has no source, so no value gets one here.
+ * lists none. The class file has no source, so every value's is unavailable here, until the unit is given its own.
  */
 public record ClassFileAttributes() implements StatelessFunctionalObject {
 
@@ -203,7 +204,8 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
     /** A value found for an object, without its source: the class file alone does not have it. */
     private void add(final Map<ObjectKind, List<WithSource<? extends Scalar>>> found, final ObjectKind object,
                      final Scalar value) {
-        found.computeIfAbsent(object, _ -> new ArrayList<>()).add(new WithSource<>(value, Optional.empty()));
+        found.computeIfAbsent(object, _ -> new ArrayList<>())
+                .add(new WithSource<>(value, new ProcessedSource.Unavailable<>()));
     }
 
     private byte[] bytes(final ClassLoader loader, final String internalName) {

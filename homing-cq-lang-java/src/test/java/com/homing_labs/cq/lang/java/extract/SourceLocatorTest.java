@@ -1,11 +1,9 @@
 package com.homing_labs.cq.lang.java.extract;
 
-import com.homing_labs.cq.lang.java.def.SourcePlace;
-import com.homing_labs.cq.lang.java.def.SourceSpan;
-import com.homing_labs.cq.lang.java.def.SourceSpans;
 import com.homing_labs.cq.lang.java.fixtures.Plain;
 import com.homing_labs.cq.lang.java.model.Attributes;
 import com.homing_labs.cq.lang.java.model.ClassName;
+import com.homing_labs.cq.lang.java.model.CodeBlocks;
 import com.homing_labs.cq.lang.java.model.ConstructorValue;
 import com.homing_labs.cq.lang.java.model.EnclosedClass;
 import com.homing_labs.cq.lang.java.model.Entry;
@@ -15,10 +13,13 @@ import com.homing_labs.cq.lang.java.model.MethodValue;
 import com.homing_labs.cq.lang.java.model.NestedClass;
 import com.homing_labs.cq.lang.java.model.Origin;
 import com.homing_labs.cq.lang.java.model.PrimitiveType;
+import com.homing_labs.cq.lang.java.model.ProcessedSource;
 import com.homing_labs.cq.lang.java.model.RecordComponentValue;
 import com.homing_labs.cq.lang.java.model.TypeUse;
 import com.homing_labs.cq.lang.java.model.WithSource;
+import com.homing_labs.cq.lang.java.model.WrittenParameters;
 import com.homing_labs.cq.lang.java.outline.BodyPart;
+import com.homing_labs.cq.lang.java.outline.CodeBlock;
 import com.homing_labs.cq.lang.java.outline.Outline;
 import com.homing_labs.cq.lang.java.taxonomy.AnonymousClass;
 import com.homing_labs.cq.lang.java.taxonomy.ClassAnnotation;
@@ -28,6 +29,7 @@ import com.homing_labs.cq.lang.java.taxonomy.Dependency;
 import com.homing_labs.cq.lang.java.taxonomy.EnumConstant;
 import com.homing_labs.cq.lang.java.taxonomy.Field;
 import com.homing_labs.cq.lang.java.taxonomy.LocalClass;
+import com.homing_labs.cq.lang.java.taxonomy.MemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.RecordComponent;
@@ -52,12 +54,12 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * Places the objects of classes written for it - a class, an enum and a record in this module's tests - in their
- * sources, and those of the fixtures', and of this module's and the outline's own classes.
+ * Each value of classes written for it - a class, an enum and a record in this module's tests - and of the fixtures,
+ * given its source when its unit is read: a block of code, and what the source says of the value there.
  */
 class SourceLocatorTest {
 
@@ -68,160 +70,200 @@ class SourceLocatorTest {
     private final List<JavaUnit> units = JavaUnitReader.INSTANCE.read(Placed.class);
 
     @Test
-    void aClassIsWrittenFromItsDocumentationCommentToItsClosingBrace() {
-        final List<String> placed = written(Placed.class, SourceLocator.INSTANCE.ofClass(unit(Placed.class),
-                outline(Placed.class), name("Placed")));
-        assertEquals(1, placed.size());
-        assertTrue(placed.getFirst().startsWith("/** A class with an object of each kind"), placed.getFirst());
-        assertTrue(placed.getFirst().endsWith("class Deeper { int hidden; } } }"), placed.getFirst());
+    void aClassIsDeclaredFromItsDocumentationCommentToItsClosingBrace() {
+        final CodeBlock declaration = SourceLocator.INSTANCE.declaration(unit(Placed.class)).orElseThrow();
+        assertTrue(declaration.text().startsWith("/** A class with an object of each kind"), declaration.text());
+        assertTrue(squashed(declaration).endsWith("class Deeper { int hidden; } } }"), declaration.text());
+        assertEquals(8, declaration.line());
+    }
+
+    @Test
+    void everyBlockIsCopiedFromWhereItIsInTheFile() {
+        final String text = unit(Placed.class).source().orElseThrow().text();
+        final List<CodeBlock> blocks = blocks(unit(Placed.class).attributes());
+        assertTrue(blocks.size() > 40, blocks.size() + " blocks");
+        for (final CodeBlock block : blocks) {
+            assertEquals(block.text(), text.substring(block.offset(), block.offset() + block.text().length()));
+            assertEquals(text.substring(0, block.offset()).split("\n", -1).length, block.line(), block.text());
+        }
     }
 
     @Test
     void theHeaderHoldsTheClassesAnnotationsTypeParametersAndSupertypes() {
-        assertEquals(List.of("@Deprecated"), written(Placed.class, placeOf(Placed.class, ClassAnnotation.INSTANCE,
-                any -> true)));
-        assertEquals(List.of("public"), written(Placed.class, placeOf(Placed.class,
-                ClassProperty.Visibility.INSTANCE, any -> true)));
-        assertEquals(List.of("T extends Comparable<T>"), written(Placed.class, placeOf(Placed.class,
-                TypeParameter.INSTANCE, any -> true)));
-        assertEquals(List.of("AbstractList<T>"), written(Placed.class, placeOf(Placed.class, Superclass.INSTANCE,
-                any -> true)));
-        assertEquals(List.of("RandomAccess"), written(Placed.class, placeOf(Placed.class, Superinterface.INSTANCE,
-                any -> true)));
-        assertEquals(SourcePlace.Unwritten.INSTANCE, placeOf(Placed.class, ClassProperty.Extensibility.INSTANCE,
-                any -> true), "an open class says nothing of it");
+        final ProcessedSource.OfAnnotation annotation = assertInstanceOf(ProcessedSource.OfAnnotation.class,
+                sourceOf(Placed.class, ClassAnnotation.INSTANCE, any -> true));
+        assertEquals("@Deprecated", annotation.block().text());
+        assertEquals(Optional.empty(), annotation.arguments());
+        assertEquals("public", written(sourceOf(Placed.class, ClassProperty.Visibility.INSTANCE, any -> true)));
+        final ProcessedSource.OfTypeParameter parameter = assertInstanceOf(ProcessedSource.OfTypeParameter.class,
+                sourceOf(Placed.class, TypeParameter.INSTANCE, any -> true));
+        assertEquals("T extends Comparable<T>", parameter.block().text());
+        assertEquals(List.of("Comparable<T>"), texts(parameter.bounds()));
+        assertEquals("AbstractList<T>", written(sourceOf(Placed.class, Superclass.INSTANCE, any -> true)));
+        assertEquals("RandomAccess", written(sourceOf(Placed.class, Superinterface.INSTANCE, any -> true)));
+        assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(Placed.class,
+                ClassProperty.Extensibility.INSTANCE, any -> true), "an open class says nothing of it");
     }
 
     @Test
-    void aFieldIsItsDeclarationOrItsTypeAndItsOwnDeclaratorWhenItSharesOne() {
-        assertEquals(List.of("static final int CONSTANT = 1 + 2;"), written(Placed.class,
-                placeOf(Placed.class, StaticField.INSTANCE, field("CONSTANT"))), "the comment after it is left out");
-        assertEquals(List.of("int", "first = 1"), written(Placed.class, placeOf(Placed.class, Field.INSTANCE,
-                field("first"))));
-        assertEquals(List.of("int", "second"), written(Placed.class, placeOf(Placed.class, Field.INSTANCE,
-                field("second"))));
-        assertEquals(List.of("private final List<T> items;"), written(Placed.class, placeOf(Placed.class,
-                Field.INSTANCE, field("items"))));
+    void aFieldIsItsDeclarationWithItsOwnDeclaratorAndInitialValue() {
+        final ProcessedSource.OfField constant = field(Placed.class, StaticField.INSTANCE, "CONSTANT");
+        assertEquals("static final int CONSTANT = 1 + 2;", constant.block().text(), "the comment after it left out");
+        assertEquals("CONSTANT = 1 + 2", constant.declarator().text());
+        assertEquals(Optional.of("1 + 2"), constant.initialValue().map(CodeBlock::text));
+        final ProcessedSource.OfField first = field(Placed.class, Field.INSTANCE, "first");
+        assertEquals("int first = 1, second, third = 3;", first.block().text());
+        assertEquals("first = 1", first.declarator().text());
+        final ProcessedSource.OfField second = field(Placed.class, Field.INSTANCE, "second");
+        assertEquals(first.block(), second.block(), "a declaration shared");
+        assertEquals("second", second.declarator().text());
+        assertEquals(Optional.empty(), second.initialValue());
+        assertEquals("private final List<T> items;", field(Placed.class, Field.INSTANCE, "items").block().text());
     }
 
     @Test
     void overloadsAreToldApartByTheTypesOfTheirParameters() {
-        assertEquals(List.of("void overloaded(final int value) { }"), written(Placed.class,
-                placeOf(Placed.class, Method.Implementation.INSTANCE, overloaded(INT))));
-        assertEquals(List.of("void overloaded(final String value) { }"), written(Placed.class,
-                placeOf(Placed.class, Method.Implementation.INSTANCE, overloaded(named("java.lang.String")))));
-        assertEquals(List.of("void overloaded(final Map.Entry<String, T>[] entries) { }"), written(Placed.class,
-                placeOf(Placed.class, Method.Implementation.INSTANCE,
-                        overloaded(new TypeUse.Array(named("java.util.Map$Entry"))))));
-        assertEquals(List.of("void overloaded(final T value, final int... rest) { }"), written(Placed.class,
-                placeOf(Placed.class, Method.Implementation.INSTANCE,
-                        overloaded(named("java.lang.Comparable"), new TypeUse.Array(INT)))));
-        assertEquals(List.of("private static int count() { return 0; }"), written(Placed.class,
-                placeOf(Placed.class, StaticMethod.Implementation.INSTANCE, any -> true)));
+        assertEquals("void overloaded(final int value) { }",
+                squashed(method(Placed.class, Method.Implementation.INSTANCE, overloaded(INT)).block()));
+        assertEquals("void overloaded(final String value) { }", squashed(method(Placed.class,
+                Method.Implementation.INSTANCE, overloaded(named("java.lang.String"))).block()));
+        assertEquals("void overloaded(final Map.Entry<String, T>[] entries) { }", squashed(method(Placed.class,
+                Method.Implementation.INSTANCE, overloaded(new TypeUse.Array(named("java.util.Map$Entry"))))
+                .block()));
+        final ProcessedSource.OfMethod variable = method(Placed.class, Method.Implementation.INSTANCE,
+                overloaded(named("java.lang.Comparable"), new TypeUse.Array(INT)));
+        assertEquals("void overloaded(final T value, final int... rest) { }", squashed(variable.block()));
+        assertEquals(List.of("value", "rest"), names(variable.parameters()),
+                "the names the class file does not keep");
+        assertEquals(List.of("final T value", "final int... rest"), variable.parameters().items().stream()
+                .map(parameter -> parameter.block().text()).toList());
+        final ProcessedSource.OfMethod count = method(Placed.class, StaticMethod.Implementation.INSTANCE,
+                any -> true);
+        assertEquals("private static int count() { return 0; }", squashed(count.block()));
+        assertEquals(Optional.of("{ return 0; }"), count.body().map(this::squashed));
     }
 
     @Test
     void aMethodTheCompilerGeneratedIsWrittenNowhere() {
-        assertEquals(List.of("@Override public T get(final int index) { return items.get(index); }"),
-                written(Placed.class, placeOf(Placed.class, Method.Implementation.INSTANCE,
-                        value -> value instanceof MethodValue method && method.name().equals("get")
-                                && method.origin() instanceof Origin.Declared)));
-        assertEquals(SourcePlace.Unwritten.INSTANCE, placeOf(Placed.class, Method.Implementation.INSTANCE,
+        final ProcessedSource.OfMethod get = method(Placed.class, Method.Implementation.INSTANCE,
+                value -> value instanceof MethodValue method && method.name().equals("get")
+                        && method.origin() instanceof Origin.Declared);
+        assertEquals("@Override public T get(final int index) { return items.get(index); }", squashed(get.block()));
+        assertEquals(List.of("index"), names(get.parameters()));
+        assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(Placed.class, Method.Implementation.INSTANCE,
                 value -> value instanceof MethodValue method && method.name().equals("get")
                         && method.origin() instanceof Origin.Generated), "javac's bridge to AbstractList.get");
     }
 
     @Test
     void aConstructorRunsTheInstanceInitialisersUnlessItHandsOverToAnother() {
-        assertEquals(List.of("/** Hands over to the other. */ public Placed() { this(List.of()); }"),
-                written(Placed.class, placeOf(Placed.class, Constructor.INSTANCE, parameters(0))));
-        assertEquals(List.of("first = 1", "third = 3", "{ second = 2; }",
-                        "public Placed(final List<T> items) { this.items = items; }"),
-                written(Placed.class, placeOf(Placed.class, Constructor.INSTANCE, parameters(1))));
+        final ProcessedSource.OfConstructor handing = constructor(Placed.class, Constructor.INSTANCE, parameters(0));
+        assertEquals("/** Hands over to the other. */ public Placed() { this(List.of()); }",
+                squashed(handing.block()));
+        assertEquals(Optional.of("/** Hands over to the other. */"), handing.doc().map(CodeBlock::text));
+        assertEquals(List.of(), texts(handing.initialisers()));
+        final ProcessedSource.OfConstructor taking = constructor(Placed.class, Constructor.INSTANCE, parameters(1));
+        assertEquals("public Placed(final List<T> items) { this.items = items; }", squashed(taking.block()));
+        assertEquals(List.of("items"), names(taking.parameters()));
+        assertEquals(List.of("first = 1", "third = 3", "{ second = 2; }"), texts(taking.initialisers()));
     }
 
     @Test
     void theStaticInitialiserIsTheStaticBlocksAndTheValuesThatAreNoConstants() {
+        final ProcessedSource.OfInitialiser initialiser = assertInstanceOf(ProcessedSource.OfInitialiser.class,
+                sourceOf(Placed.class, StaticInitialiser.INSTANCE, any -> true));
         assertEquals(List.of("counted = count()", "BOXED = 3", "COPIED = counted", "static { counted++; }"),
-                written(Placed.class, placeOf(Placed.class, StaticInitialiser.INSTANCE, any -> true)));
+                texts(initialiser.blocks()));
     }
 
     @Test
     void aMemberTypesBodyIsReadOneLevelDown() {
-        final List<String> member = List.of("static class Member { int inside; }");
-        assertEquals(member, written(Placed.class, placeOf(Placed.class, StaticMemberClass.INSTANCE, any -> true)));
-        assertEquals(member, written(Placed.class, SourceLocator.INSTANCE.ofClass(unit(Placed.class),
-                outline(Placed.class), name("Placed$Member"))));
-        assertEquals(List.of("int inside;"), written(Placed.class, placeOf(Placed.class, name("Placed$Member"),
-                Field.INSTANCE, field("inside"))));
+        final ProcessedSource.OfNestedClass member = assertInstanceOf(ProcessedSource.OfNestedClass.class,
+                sourceOf(Placed.class, StaticMemberClass.INSTANCE, any -> true));
+        assertEquals("static class Member { int inside; }", squashed(member.block()));
+        assertEquals("static class Member", member.header().text());
+        assertEquals(Optional.of("{ int inside; }"), member.body().map(this::squashed));
+        assertEquals("int inside;", field(Placed.class, name("Placed$Member"), Field.INSTANCE, "inside").block()
+                .text());
     }
 
     @Test
     void anInnerClassesConstructorTakesTheEnclosingObjectFirstInTheClassFile() {
-        assertEquals(List.of("Inner(final int count) { this.count = count; }"), written(Placed.class,
-                placeOf(Placed.class, name("Placed$Inner"), Constructor.INSTANCE, any -> true)));
-        assertEquals(List.of("made = LIMIT + count()"), written(Placed.class, placeOf(Placed.class,
-                name("Placed$Inner"), StaticInitialiser.INSTANCE, any -> true)), "its own constants are left out");
+        final ProcessedSource.OfConstructor constructor = constructor(Placed.class, name("Placed$Inner"),
+                Constructor.INSTANCE, any -> true);
+        assertEquals("Inner(final int count) { this.count = count; }", squashed(constructor.block()));
+        assertEquals(List.of("count"), names(constructor.parameters()));
+        assertEquals(List.of("made = LIMIT + count()"), texts(assertInstanceOf(ProcessedSource.OfInitialiser.class,
+                sourceOf(Placed.class, name("Placed$Inner"), StaticInitialiser.INSTANCE, any -> true)).blocks()),
+                "its own constants are left out");
     }
 
     @Test
     void aTypeNestedTwoLevelsDownIsWrittenThereButWhatItsBodyHoldsOnlyWithinIt() {
-        final List<String> deeper = List.of("class Deeper { int hidden; }");
-        assertEquals(deeper, written(Placed.class, SourceLocator.INSTANCE.ofClass(unit(Placed.class),
-                outline(Placed.class), name("Placed$Inner$Deeper"))));
-        assertEquals(deeper, within(Placed.class, placeOf(Placed.class, name("Placed$Inner$Deeper"),
-                Field.INSTANCE, field("hidden"))));
+        final String deeper = "class Deeper { int hidden; }";
+        assertEquals(deeper, squashed(assertInstanceOf(ProcessedSource.OfNestedClass.class, sourceOf(Placed.class,
+                name("Placed$Inner"), MemberClass.INSTANCE, any -> true)).block()));
+        assertEquals(List.of(deeper), within(sourceOf(Placed.class, name("Placed$Inner$Deeper"), Field.INSTANCE,
+                field("hidden"))));
     }
 
     @Test
-    void aLocalClassIsWithinTheMethodWhoseCodeDeclaresIt() {
-        final SourcePlace local = placeOf(Placed.class, LocalClass.INSTANCE, any -> true);
-        assertEquals(1, within(Placed.class, local).size());
-        assertTrue(within(Placed.class, local).getFirst().startsWith("Runnable local() { class Local"));
-        assertEquals(local, SourceLocator.INSTANCE.ofClass(unit(Placed.class), outline(Placed.class),
-                name("Placed$1Local")));
+    void aLocalClassAndWhatItHoldsAreWithinTheMethodWhoseCodeDeclaresIt() {
+        final List<String> local = within(sourceOf(Placed.class, LocalClass.INSTANCE, any -> true));
+        assertEquals(1, local.size());
+        assertTrue(local.getFirst().startsWith("Runnable local() { class Local"), local.getFirst());
+        assertEquals(local, within(sourceOf(Placed.class, name("Placed$1Local"), Method.Implementation.INSTANCE,
+                value -> ((MethodValue) value).name().equals("run"))));
     }
 
     @Test
     void anEnumMakesItsConstantsInItsStaticInitialiserAndItsConstructorsTakeTwoParametersMore() {
         final String two = "TWO(\"two\") { @Override String label() { return \"second\"; } }";
-        assertEquals(List.of("ONE"), written(PlacedEnum.class, placeOf(PlacedEnum.class, EnumConstant.INSTANCE,
-                value -> value instanceof EnumConstantValue constant && constant.name().equals("ONE"))));
-        assertEquals(List.of(two), written(PlacedEnum.class, placeOf(PlacedEnum.class, EnumConstant.INSTANCE,
-                value -> value instanceof EnumConstantValue constant && constant.name().equals("TWO"))));
-        assertEquals(List.of("ONE", two), written(PlacedEnum.class, placeOf(PlacedEnum.class,
-                StaticInitialiser.INSTANCE, any -> true)));
-        assertEquals(List.of("PlacedEnum() { this(\"one\"); }"), written(PlacedEnum.class,
-                placeOf(PlacedEnum.class, Constructor.INSTANCE, parameters(2))));
-        assertEquals(List.of("PlacedEnum(final String label) { this.label = label; }"), written(PlacedEnum.class,
-                placeOf(PlacedEnum.class, Constructor.INSTANCE, parameters(3))));
-        assertEquals(SourcePlace.Unwritten.INSTANCE, placeOf(PlacedEnum.class, StaticMethod.Implementation.INSTANCE,
-                value -> value instanceof MethodValue method && method.name().equals("values")));
-        assertEquals(List.of(two), within(PlacedEnum.class, placeOf(PlacedEnum.class, AnonymousClass.INSTANCE,
-                any -> true)), "a constant's body is a class made in the static initialiser");
+        final ProcessedSource.OfEnumConstant one = constant("ONE");
+        assertEquals("ONE", one.block().text());
+        assertEquals(Optional.empty(), one.arguments());
+        final ProcessedSource.OfEnumConstant second = constant("TWO");
+        assertEquals(two, squashed(second.block()));
+        assertEquals(Optional.of("(\"two\")"), second.arguments().map(CodeBlock::text));
+        assertTrue(second.body().isPresent());
+        assertEquals(List.of("ONE", two), assertInstanceOf(ProcessedSource.OfInitialiser.class,
+                sourceOf(PlacedEnum.class, StaticInitialiser.INSTANCE, any -> true)).blocks().items().stream()
+                .map(this::squashed).toList());
+        assertEquals("PlacedEnum() { this(\"one\"); }", squashed(constructor(PlacedEnum.class,
+                Constructor.INSTANCE, parameters(2)).block()));
+        final ProcessedSource.OfConstructor labelled = constructor(PlacedEnum.class, Constructor.INSTANCE,
+                parameters(3));
+        assertEquals("PlacedEnum(final String label) { this.label = label; }", squashed(labelled.block()));
+        assertEquals(List.of("label"), names(labelled.parameters()));
+        assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedEnum.class,
+                StaticMethod.Implementation.INSTANCE, value -> ((MethodValue) value).name().equals("values")));
+        assertEquals(List.of(two), within(sourceOf(PlacedEnum.class, AnonymousClass.INSTANCE, any -> true)),
+                "a constant's body is a class made in the static initialiser");
     }
 
     @Test
     void aRecordsComponentsAndCompactConstructorAreWrittenAndWhatJavacAddsIsNot() {
-        assertEquals(List.of("int count"), written(PlacedRecord.class, placeOf(PlacedRecord.class,
-                RecordComponent.INSTANCE, value -> ((RecordComponentValue) value).name().equals("count"))));
-        assertEquals(List.of("String... names"), written(PlacedRecord.class, placeOf(PlacedRecord.class,
-                RecordComponent.INSTANCE, value -> ((RecordComponentValue) value).name().equals("names"))));
-        assertEquals(List.of("PlacedRecord { names = names.clone(); }"), written(PlacedRecord.class,
-                placeOf(PlacedRecord.class, Constructor.INSTANCE, any -> true)));
+        assertEquals("int count", written(sourceOf(PlacedRecord.class, RecordComponent.INSTANCE,
+                value -> ((RecordComponentValue) value).name().equals("count"))));
+        assertEquals("String... names", written(sourceOf(PlacedRecord.class, RecordComponent.INSTANCE,
+                value -> ((RecordComponentValue) value).name().equals("names"))));
+        final ProcessedSource.OfConstructor compact = constructor(PlacedRecord.class, Constructor.INSTANCE,
+                any -> true);
+        assertEquals("PlacedRecord { names = names.clone(); }", squashed(compact.block()));
+        assertEquals(List.of("count", "names"), names(compact.parameters()), "its components, as its parameters");
         for (final String implied : List.of("count", "names", "equals", "hashCode", "toString")) {
-            assertEquals(SourcePlace.Unwritten.INSTANCE, placeOf(PlacedRecord.class, Method.Implementation.INSTANCE,
-                    value -> ((MethodValue) value).name().equals(implied)), implied);
+            assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedRecord.class,
+                    Method.Implementation.INSTANCE, value -> ((MethodValue) value).name().equals(implied)), implied);
         }
-        assertEquals(SourcePlace.Unwritten.INSTANCE, placeOf(PlacedRecord.class, Field.INSTANCE,
+        assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedRecord.class, Field.INSTANCE,
                 field("count")), "the field javac derives from the component");
-        assertEquals(SourcePlace.Unwritten.INSTANCE, placeOf(PlacedRecord.class,
+        assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedRecord.class,
                 ClassProperty.Extensibility.INSTANCE, any -> true), "a record is final without saying so");
     }
 
     @Test
     void aDependencyIsNotPlacedYet() {
-        assertEquals(SourcePlace.Unplaced.INSTANCE, placeOf(Placed.class, Dependency.Signature.INSTANCE,
+        assertInstanceOf(ProcessedSource.Unplaced.class, sourceOf(Placed.class, Dependency.Signature.INSTANCE,
                 any -> true));
     }
 
@@ -230,34 +272,34 @@ class SourceLocatorTest {
         final List<JavaUnit> fixtures = JavaUnitReader.INSTANCE.read(Plain.class);
         final JavaUnit second = fixtures.stream().filter(unit -> unit.type().getSimpleName().equals("SecondInFile"))
                 .findFirst().orElseThrow();
-        assertEquals(List.of("/** The second top-level class of TwoInOneFile.java: its own unit, sharing that file. */"
-                        + " class SecondInFile { }"),
-                texts(second, ((SourcePlace.Written) SourceLocator.INSTANCE.ofClass(second,
-                        SourceLocator.INSTANCE.outline(second).orElseThrow(), second.identity().name())).spans()));
+        assertEquals("/** The second top-level class of TwoInOneFile.java: its own unit, sharing that file. */"
+                        + " class SecondInFile { }",
+                squashed(SourceLocator.INSTANCE.declaration(second).orElseThrow()));
         final JavaUnit nesting = fixtures.stream().filter(unit -> unit.type().getSimpleName().equals("Nesting"))
                 .findFirst().orElseThrow();
-        final SourcePlace anonymous = SourceLocator.INSTANCE.ofClass(nesting,
-                SourceLocator.INSTANCE.outline(nesting).orElseThrow(),
-                new ClassName(nesting.identity().name().binaryName() + "$1"));
-        final List<String> within = texts(nesting, ((SourcePlace.Within) anonymous).spans());
+        final List<String> within = within(nesting.attributes().entry(AnonymousClass.INSTANCE).all().getFirst()
+                .source());
         assertEquals(1, within.size());
         assertTrue(within.getFirst().startsWith("/** Declares a local class and an anonymous class. */ public Object"
                 + " localAndAnonymous()"), within.getFirst());
     }
 
     @Test
-    void aUnitReadWithoutItsSourceHasNoOutline() {
-        assertEquals(Optional.empty(), SourceLocator.INSTANCE.outline(JavaUnits.INSTANCE.of(Placed.class,
-                Optional.empty())));
+    void aUnitReadWithoutItsSourceHasEveryValuesSourceUnavailable() {
+        final JavaUnit unit = JavaUnits.INSTANCE.of(Placed.class, Optional.empty());
+        assertEquals(Optional.empty(), SourceLocator.INSTANCE.outline(unit));
+        assertEquals(Optional.empty(), SourceLocator.INSTANCE.declaration(unit));
+        assertTrue(values(unit.attributes()).allMatch(value -> value.source() instanceof ProcessedSource.Unavailable),
+                "nothing is known of where any is written");
     }
 
     /**
      * Over this module's classes, its tests' and the outline's: each field, method and constructor written in a
-     * top-level class, or in a member class of one, is the place of exactly one in its class file, and every other one
+     * top-level class, or in a member class of one, is the source of exactly one in its class file, and every other one
      * in the class file - implied or generated - is written nowhere.
      */
     @Test
-    void everyMemberWrittenIsThePlaceOfExactlyOneInTheClassFile() {
+    void everyMemberWrittenIsTheSourceOfExactlyOneInTheClassFile() {
         final List<JavaUnit> read = Stream.of(JavaUnit.class, Outline.class, Placed.class)
                 .flatMap(type -> JavaUnitReader.INSTANCE.read(type).stream())
                 .filter(unit -> unit.source().isPresent())
@@ -270,7 +312,7 @@ class SourceLocatorTest {
             final List<BodyPart> parts = outline.types().stream()
                     .filter(type -> type.header().name().text().equals(unit.type().getSimpleName()))
                     .findFirst().orElseThrow().parts().items();
-            oneToOne(unit, outline, unit.identity().name(), unit.attributes(), parts, wrong);
+            oneToOne(unit.identity().name(), unit.attributes(), parts, wrong);
             for (final Entry entry : unit.attributes().entries()) {
                 for (final WithSource<? extends Scalar> value : entry.all()) {
                     if (value.object() instanceof NestedClass nested) {
@@ -281,7 +323,7 @@ class SourceLocatorTest {
                                         && type.header().name().text().equals(simpleName)
                                         ? type.nested().stream() : Stream.empty())
                                 .findFirst().orElseThrow().parts().items();
-                        oneToOne(unit, outline, nested.name(), nested.attributes(), nestedParts, wrong);
+                        oneToOne(nested.name(), nested.attributes(), nestedParts, wrong);
                         members++;
                     }
                 }
@@ -291,33 +333,27 @@ class SourceLocatorTest {
         assertEquals(List.of(), wrong);
     }
 
-    /** Each written field, method and constructor of a class is the place of exactly one of its class file's. */
-    private void oneToOne(final JavaUnit unit, final Outline outline, final ClassName inClass,
-                          final Attributes attributes, final List<BodyPart> parts, final List<String> wrong) {
-        final Set<SourceSpan> methods = new HashSet<>();
-        final Set<SourceSpans> constructors = new HashSet<>();
+    /** Each written field, method and constructor of a class is the source of exactly one of its class file's. */
+    private void oneToOne(final ClassName inClass, final Attributes attributes, final List<BodyPart> parts,
+                          final List<String> wrong) {
+        final Set<CodeBlock> methods = new HashSet<>();
+        final Set<CodeBlock> constructors = new HashSet<>();
         int fields = 0;
         for (final Entry entry : attributes.entries()) {
             for (final WithSource<? extends Scalar> value : entry.all()) {
-                final SourcePlace place = SourceLocator.INSTANCE.of(unit, outline, inClass, entry.object(),
-                        value.object());
                 final String what = inClass.binaryName() + " " + value.object();
-                switch (value.object()) {
-                    case MethodValue _ when place instanceof SourcePlace.Written written -> {
-                        final List<SourceSpan> spans = written.spans().items();
-                        if (spans.size() != 1 || !methods.add(spans.getFirst())) {
-                            wrong.add(what + " is written in " + written.spans());
-                        }
+                switch (value.source()) {
+                    case ProcessedSource.OfMethod method when !methods.add(method.block()) ->
+                            wrong.add(what + " shares its block with another");
+                    case ProcessedSource.OfConstructor constructor when !constructors.add(constructor.block()) ->
+                            wrong.add(what + " shares its block with another");
+                    case ProcessedSource.OfField _ -> fields++;
+                    case ProcessedSource.OfMethod _, ProcessedSource.OfConstructor _ -> {
                     }
-                    case ConstructorValue _ when place instanceof SourcePlace.Written written -> {
-                        if (!constructors.add(written.spans())) {
-                            wrong.add(what + " shares its places with another");
-                        }
-                    }
-                    case FieldValue _ when place instanceof SourcePlace.Written -> fields++;
-                    case MethodValue _, ConstructorValue _, FieldValue _ -> {
-                        if (!(place instanceof SourcePlace.Unwritten)) {
-                            wrong.add(what + " is " + place);
+                    case ProcessedSource<?> other when value.object() instanceof MethodValue
+                            || value.object() instanceof ConstructorValue || value.object() instanceof FieldValue -> {
+                        if (!(other instanceof ProcessedSource.Unwritten)) {
+                            wrong.add(what + " is " + other);
                         }
                     }
                     default -> {
@@ -333,7 +369,7 @@ class SourceLocatorTest {
         if (methods.size() != writtenMethods || constructors.size() != writtenConstructors || fields != declarators) {
             wrong.add(inClass.binaryName() + ": " + methods.size() + " of " + writtenMethods + " methods, "
                     + constructors.size() + " of " + writtenConstructors + " constructors and " + fields + " of "
-                    + declarators + " fields are placed");
+                    + declarators + " fields are written");
         }
     }
 
@@ -341,28 +377,24 @@ class SourceLocatorTest {
         return units.stream().filter(unit -> unit.type() == type).findFirst().orElseThrow();
     }
 
-    private Outline outline(final Class<?> type) {
-        return SourceLocator.INSTANCE.outline(unit(type)).orElseThrow();
-    }
-
     private ClassName name(final String simpleName) {
         return new ClassName(HERE + simpleName);
     }
 
-    /** Where the first value of the object that passes the test, in the unit's top-level class, is written. */
-    private SourcePlace placeOf(final Class<?> type, final ObjectKind object, final Predicate<Scalar> wanted) {
-        return placeOf(type, new ClassName(type.getName()), object, wanted);
+    /** The source of the first value of the object that passes the test, in the unit's top-level class. */
+    private ProcessedSource<?> sourceOf(final Class<?> type, final ObjectKind object, final Predicate<Scalar> wanted) {
+        return sourceOf(type, new ClassName(type.getName()), object, wanted);
     }
 
-    /** Where the first value of the object that passes the test, in a class of the unit, is written. */
-    private SourcePlace placeOf(final Class<?> type, final ClassName inClass, final ObjectKind object,
-                                final Predicate<Scalar> wanted) {
-        final Scalar value = attributes(unit(type).attributes(), new ClassName(type.getName()), inClass)
+    /** The source of the first value of the object that passes the test, in a class of the unit. */
+    private ProcessedSource<?> sourceOf(final Class<?> type, final ClassName inClass, final ObjectKind object,
+                                        final Predicate<Scalar> wanted) {
+        return attributes(unit(type).attributes(), new ClassName(type.getName()), inClass)
                 .orElseThrow().entry(object).all().stream()
-                .map(WithSource::object)
-                .filter(wanted)
-                .findFirst().orElseThrow(() -> new AssertionError("no such " + object + " in " + inClass));
-        return SourceLocator.INSTANCE.of(unit(type), outline(type), inClass, object, value);
+                .filter(value -> wanted.test(value.object()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no such " + object + " in " + inClass))
+                .source();
     }
 
     /** The attributes of a class of the unit, nested in it at any depth. */
@@ -378,6 +410,55 @@ class SourceLocatorTest {
                     default -> Stream.empty();
                 })
                 .findFirst();
+    }
+
+    /** Every value of a class and of the classes nested in it. */
+    private Stream<WithSource<? extends Scalar>> values(final Attributes attributes) {
+        return attributes.entries().stream().flatMap(entry -> entry.all().stream())
+                .flatMap(value -> Stream.concat(Stream.of(value), switch (value.object()) {
+                    case NestedClass nested -> values(nested.attributes());
+                    case EnclosedClass enclosed -> values(enclosed.attributes());
+                    default -> Stream.empty();
+                }));
+    }
+
+    /** Every block the values of a class and of the classes nested in it are written in. */
+    private List<CodeBlock> blocks(final Attributes attributes) {
+        return values(attributes).flatMap(value -> switch (value.source()) {
+            case ProcessedSource.Written<?> written -> Stream.of(written.block());
+            case ProcessedSource.OfInitialiser initialiser -> initialiser.blocks().items().stream();
+            case ProcessedSource.Within<?> within -> within.blocks().items().stream();
+            default -> Stream.empty();
+        }).toList();
+    }
+
+    private ProcessedSource.OfField field(final Class<?> type, final ObjectKind object, final String name) {
+        return field(type, new ClassName(type.getName()), object, name);
+    }
+
+    private ProcessedSource.OfField field(final Class<?> type, final ClassName inClass, final ObjectKind object,
+                                          final String name) {
+        return assertInstanceOf(ProcessedSource.OfField.class, sourceOf(type, inClass, object, field(name)));
+    }
+
+    private ProcessedSource.OfMethod method(final Class<?> type, final ObjectKind object,
+                                            final Predicate<Scalar> wanted) {
+        return assertInstanceOf(ProcessedSource.OfMethod.class, sourceOf(type, object, wanted));
+    }
+
+    private ProcessedSource.OfConstructor constructor(final Class<?> type, final ObjectKind object,
+                                                      final Predicate<Scalar> wanted) {
+        return constructor(type, new ClassName(type.getName()), object, wanted);
+    }
+
+    private ProcessedSource.OfConstructor constructor(final Class<?> type, final ClassName inClass,
+                                                      final ObjectKind object, final Predicate<Scalar> wanted) {
+        return assertInstanceOf(ProcessedSource.OfConstructor.class, sourceOf(type, inClass, object, wanted));
+    }
+
+    private ProcessedSource.OfEnumConstant constant(final String name) {
+        return assertInstanceOf(ProcessedSource.OfEnumConstant.class, sourceOf(PlacedEnum.class,
+                EnumConstant.INSTANCE, value -> ((EnumConstantValue) value).name().equals(name)));
     }
 
     private Predicate<Scalar> field(final String name) {
@@ -398,26 +479,26 @@ class SourceLocatorTest {
         return new TypeUse.Named(new ClassName(binaryName));
     }
 
-    /** The texts a place says the value is written in, each on a line. */
-    private List<String> written(final Class<?> type, final SourcePlace place) {
-        if (place instanceof SourcePlace.Written written) {
-            return texts(unit(type), written.spans());
-        }
-        return fail("written nowhere exactly: " + place);
+    /** The block a value is written in, as written. */
+    private String written(final ProcessedSource<?> source) {
+        return assertInstanceOf(ProcessedSource.Written.class, source).block().text();
     }
 
-    /** The texts a place says the value is written within, each on a line. */
-    private List<String> within(final Class<?> type, final SourcePlace place) {
-        if (place instanceof SourcePlace.Within within) {
-            return texts(unit(type), within.spans());
-        }
-        return fail("not within: " + place);
+    /** The blocks a value is written within, each on a line. */
+    private List<String> within(final ProcessedSource<?> source) {
+        return assertInstanceOf(ProcessedSource.Within.class, source).blocks().items().stream()
+                .map(this::squashed).toList();
     }
 
-    private List<String> texts(final JavaUnit unit, final SourceSpans spans) {
-        final String text = unit.source().orElseThrow().text();
-        return spans.items().stream()
-                .map(span -> text.substring(span.start(), span.end()).replaceAll("\\s+", " "))
-                .toList();
+    private List<String> names(final WrittenParameters parameters) {
+        return parameters.items().stream().map(parameter -> parameter.name()).toList();
+    }
+
+    private List<String> texts(final CodeBlocks blocks) {
+        return blocks.items().stream().map(this::squashed).toList();
+    }
+
+    private String squashed(final CodeBlock block) {
+        return block.text().replaceAll("\\s+", " ");
     }
 }

@@ -8,9 +8,13 @@ import com.homing_labs.cq.lang.java.fixtures.AnEnum;
 import com.homing_labs.cq.lang.java.fixtures.AnInterface;
 import com.homing_labs.cq.lang.java.fixtures.Nesting;
 import com.homing_labs.cq.lang.java.fixtures.Plain;
+import com.homing_labs.cq.lang.java.model.Attributes;
 import com.homing_labs.cq.lang.java.model.ClassName;
+import com.homing_labs.cq.lang.java.model.ProcessedSource;
+import com.homing_labs.cq.lang.java.model.WithSource;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.taxonomy.Constructor;
+import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
 import org.junit.jupiter.api.Test;
 
@@ -20,8 +24,8 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class JavaUnitTest {
 
@@ -48,10 +52,20 @@ class JavaUnitTest {
         final JavaSource source = new JavaSource(URI.create("file:///Plain.java"), "class Plain {}");
         final JavaUnit unit = JavaUnits.INSTANCE.of(Plain.class, Optional.of(source));
         assertEquals(new Identity(new ClassName(Plain.class.getName()), ClassKind.Class.INSTANCE), unit.identity());
-        assertEquals(ClassFileAttributes.INSTANCE.of(Plain.class), unit.attributes());
+        assertEquals(objects(ClassFileAttributes.INSTANCE.of(Plain.class)), objects(unit.attributes()),
+                "the values its class files hold");
         assertEquals(Optional.of(source), unit.source());
-        assertTrue(unit.attributes().entry(Constructor.INSTANCE).all().getFirst().source().isEmpty(),
-                "a member's source comes with the parser");
+        assertInstanceOf(ProcessedSource.Unwritten.class,
+                unit.attributes().entry(Constructor.INSTANCE).all().getFirst().source(),
+                "each with its source: the default constructor is written nowhere");
+        assertEquals(ClassFileAttributes.INSTANCE.of(Plain.class), JavaUnits.INSTANCE.of(Plain.class,
+                Optional.empty()).attributes(), "a unit read without its source keeps its attributes as they are");
+    }
+
+    private List<List<Scalar>> objects(final Attributes attributes) {
+        return attributes.entries().stream()
+                .map(entry -> entry.all().stream().<Scalar>map(WithSource::object).toList())
+                .toList();
     }
 
     @Test

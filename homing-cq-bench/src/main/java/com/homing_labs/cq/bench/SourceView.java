@@ -1,14 +1,18 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.def.JavaSource;
-import com.homing_labs.cq.lang.java.def.SourcePlace;
-import com.homing_labs.cq.lang.java.def.SourceSpan;
-import com.homing_labs.cq.lang.java.def.SourceSpans;
 import com.homing_labs.cq.lang.java.extract.SourceLocator;
+import com.homing_labs.cq.lang.java.model.Attributes;
 import com.homing_labs.cq.lang.java.model.ClassName;
-import com.homing_labs.cq.lang.java.outline.Outline;
+import com.homing_labs.cq.lang.java.model.CodeBlocks;
+import com.homing_labs.cq.lang.java.model.EnclosedClass;
+import com.homing_labs.cq.lang.java.model.NestedClass;
+import com.homing_labs.cq.lang.java.model.ProcessedSource;
+import com.homing_labs.cq.lang.java.model.WithSource;
+import com.homing_labs.cq.lang.java.outline.CodeBlock;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import hue.captains.singapura.tao.ontology.Mutable;
+import hue.captains.singapura.tao.ontology.Scalar;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
@@ -20,12 +24,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 /**
  * The source file that declares the selected unit, beside the bench's views and always in view: its lines, numbered,
- * under how many there are and where the file is, with what is selected highlighted where the {@link SourceLocator}
- * finds it written - the class selected in the nest, or what a view has selected of it. A class nested in the unit is
- * in the same file, so selecting one shows it too. A unit read without its source says so.
+ * under how many there are and where the file is, with what is selected highlighted where its source says it is
+ * written - the class selected in the nest, or what a view has selected of it. A class nested in the unit is in the
+ * same file, so selecting one shows it too. A unit read without its source says so.
  */
 public final class SourceView implements Mutable {
 
@@ -41,10 +47,10 @@ public final class SourceView implements Mutable {
 
     private Optional<Focus> focus = Optional.empty();
 
-    /** The unit whose source is shown, and that source outlined, to look in. */
+    /** The unit whose source is shown, and where its top-level class is declared in it. */
     private Optional<JavaUnit> shown = Optional.empty();
 
-    private Optional<Outline> outline = Optional.empty();
+    private Optional<CodeBlock> declaration = Optional.empty();
 
     public SourceView() {
         pane.setId("source");
@@ -66,7 +72,7 @@ public final class SourceView implements Mutable {
         final Optional<JavaUnit> unit = selection.map(Selection::unit);
         if (unit.orElse(null) != shown.orElse(null)) {
             shown = unit;
-            outline = unit.flatMap(SourceLocator.INSTANCE::outline);
+            declaration = unit.flatMap(SourceLocator.INSTANCE::declaration);
             lines.show(unit.flatMap(JavaUnit::source).map(JavaSource::text).orElse(""));
         }
         caption.setText(unit.map(selected -> selected.source()
@@ -109,73 +115,110 @@ public final class SourceView implements Mutable {
     }
 
     private void highlight() {
-        if (selection.isEmpty() || outline.isEmpty()) {
-            lines.highlight(new SourceSpans(List.of()), new SourceSpans(List.of()));
+        if (selection.isEmpty() || selection.get().unit().source().isEmpty()) {
+            lines.highlight(new CodeBlocks(List.of()), new CodeBlocks(List.of()));
             placed.setText("");
             return;
         }
         final Focus highlighted = focus.orElseGet(() -> new Focus.OfClass(
                 new ClassName(selection.get().type().getName())));
-        final List<SourcePlace> places = places(selection.get().unit(), outline.get(), highlighted);
-        final List<SourceSpan> written = new ArrayList<>();
-        final List<SourceSpan> within = new ArrayList<>();
-        for (final SourcePlace place : places) {
-            switch (place) {
-                case SourcePlace.Written found -> written.addAll(found.spans().items());
-                case SourcePlace.Within found -> within.addAll(found.spans().items());
-                case SourcePlace.Unwritten _, SourcePlace.Unplaced _ -> {
+        if (highlighted instanceof Focus.OfClass ofClass
+                && ofClass.name().equals(selection.get().unit().identity().name())) {
+            lines.highlight(new CodeBlocks(declaration.stream().toList()), new CodeBlocks(List.of()));
+            placed.setText(shortName(ofClass.name()) + (declaration.isPresent() ? " is declared where highlighted."
+                    : " is not declared in this file."));
+            return;
+        }
+        final List<ProcessedSource<?>> sources = sources(selection.get().unit(), highlighted);
+        final List<CodeBlock> written = new ArrayList<>();
+        final List<CodeBlock> within = new ArrayList<>();
+        for (final ProcessedSource<?> source : sources) {
+            switch (source) {
+                case ProcessedSource.OfConstructor constructor -> {
+                    written.add(constructor.block());
+                    written.addAll(constructor.initialisers().items());
+                }
+                case ProcessedSource.Written<?> found -> written.add(found.block());
+                case ProcessedSource.OfInitialiser initialiser -> written.addAll(initialiser.blocks().items());
+                case ProcessedSource.Within<?> found -> within.addAll(found.blocks().items());
+                case ProcessedSource.Unwritten<?> _, ProcessedSource.Unplaced<?> _,
+                     ProcessedSource.Unavailable<?> _ -> {
                 }
             }
         }
         lines.highlight(ordered(written), ordered(within));
-        placed.setText(said(highlighted, places));
+        placed.setText(said(highlighted, sources));
     }
 
-    private List<SourcePlace> places(final JavaUnit unit, final Outline outline, final Focus focus) {
+    /**
+     * The sources of what is highlighted: of the values a view has selected, or of a class nested in the unit, as the
+     * value that holds it - a member, or a local or anonymous class - says.
+     */
+    private List<ProcessedSource<?>> sources(final JavaUnit unit, final Focus focus) {
         return switch (focus) {
-            case Focus.OfClass ofClass -> List.of(SourceLocator.INSTANCE.ofClass(unit, outline, ofClass.name()));
             case Focus.OfValues values -> values.values().items().stream()
-                    .map(value -> SourceLocator.INSTANCE.of(unit, outline, values.inClass(), values.object(),
-                            value.object()))
+                    .<ProcessedSource<?>>map(WithSource::source)
                     .toList();
+            case Focus.OfClass ofClass -> List.of(holding(unit.attributes(), ofClass.name())
+                    .<ProcessedSource<?>>map(WithSource::source)
+                    .orElseGet(ProcessedSource.Unwritten::new));
         };
     }
 
-    private SourceSpans ordered(final List<SourceSpan> spans) {
-        return new SourceSpans(spans.stream().distinct().sorted(Comparator.comparingInt(SourceSpan::start)).toList());
+    /** The value that holds a class nested in the unit, at any depth: a member, or a local or anonymous class. */
+    private Optional<WithSource<? extends Scalar>> holding(final Attributes attributes, final ClassName name) {
+        return attributes.entries().stream()
+                .flatMap(entry -> entry.all().stream())
+                .flatMap(value -> switch (value.object()) {
+                    case NestedClass nested -> nested.name().equals(name) ? Stream.of(value)
+                            : holding(nested.attributes(), name).stream();
+                    case EnclosedClass enclosed -> enclosed.name().equals(name) ? Stream.of(value)
+                            : holding(enclosed.attributes(), name).stream();
+                    default -> Stream.empty();
+                })
+                .findFirst();
     }
 
-    /** What the places of what is highlighted come to, in a sentence. */
-    private String said(final Focus focus, final List<SourcePlace> places) {
+    private CodeBlocks ordered(final List<CodeBlock> blocks) {
+        return new CodeBlocks(blocks.stream().distinct().sorted(Comparator.comparingInt(CodeBlock::offset)).toList());
+    }
+
+    /** What the sources of what is highlighted come to, in a sentence. */
+    private String said(final Focus focus, final List<ProcessedSource<?>> sources) {
         return switch (focus) {
-            case Focus.OfClass ofClass -> shortName(ofClass.name()) + switch (places.getFirst()) {
-                case SourcePlace.Written _ -> " is declared where highlighted.";
-                case SourcePlace.Within _ -> " is declared somewhere in the lightly highlighted code, which is not"
-                        + " read yet.";
-                case SourcePlace.Unwritten _, SourcePlace.Unplaced _ -> " is not declared in this file.";
+            case Focus.OfClass ofClass -> shortName(ofClass.name()) + switch (sources.getFirst()) {
+                case ProcessedSource.Written<?> _, ProcessedSource.OfInitialiser _ -> " is declared where highlighted.";
+                case ProcessedSource.Within<?> _ -> " is declared somewhere in the lightly highlighted code, which is"
+                        + " not read yet.";
+                case ProcessedSource.Unwritten<?> _, ProcessedSource.Unplaced<?> _,
+                     ProcessedSource.Unavailable<?> _ -> " is not declared in this file.";
             };
             case Focus.OfValues values -> {
                 final String object = kindName(values.object().getClass()) + " of " + shortName(values.inClass());
-                if (places.isEmpty()) {
+                if (sources.isEmpty()) {
                     yield "No " + object + ".";
                 }
-                final boolean one = places.size() == 1;
+                final boolean one = sources.size() == 1;
                 final List<String> said = new ArrayList<>();
-                count(places, SourcePlace.Written.class, one, "written where highlighted", said);
-                count(places, SourcePlace.Within.class, one,
-                        "written somewhere in the lightly highlighted code, which is not read yet", said);
-                count(places, SourcePlace.Unwritten.class, one,
-                        "written nowhere: the compiler implied or generated it", said);
-                count(places, SourcePlace.Unplaced.class, one,
-                        "not looked for: dependencies are not placed yet", said);
-                yield (one ? object : places.size() + " values of " + object) + ": " + String.join("; ", said) + ".";
+                count(sources, one, "written where highlighted", said,
+                        source -> source instanceof ProcessedSource.Written<?>
+                                || source instanceof ProcessedSource.OfInitialiser);
+                count(sources, one, "written somewhere in the lightly highlighted code, which is not read yet", said,
+                        source -> source instanceof ProcessedSource.Within<?>);
+                count(sources, one, "written nowhere: the compiler implied or generated it", said,
+                        source -> source instanceof ProcessedSource.Unwritten<?>);
+                count(sources, one, "not looked for: dependencies are not placed yet", said,
+                        source -> source instanceof ProcessedSource.Unplaced<?>);
+                count(sources, one, "not known: the unit was read without its source", said,
+                        source -> source instanceof ProcessedSource.Unavailable<?>);
+                yield (one ? object : sources.size() + " values of " + object) + ": " + String.join("; ", said) + ".";
             }
         };
     }
 
-    private void count(final List<SourcePlace> places, final Class<? extends SourcePlace> kind, final boolean one,
-                       final String what, final List<String> said) {
-        final long count = places.stream().filter(kind::isInstance).count();
+    private void count(final List<ProcessedSource<?>> sources, final boolean one, final String what,
+                       final List<String> said, final Predicate<ProcessedSource<?>> kind) {
+        final long count = sources.stream().filter(kind).count();
         if (count > 0) {
             said.add(one ? what : count + " " + what);
         }

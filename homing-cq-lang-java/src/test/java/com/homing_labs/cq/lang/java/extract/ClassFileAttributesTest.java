@@ -37,6 +37,7 @@ import com.homing_labs.cq.lang.java.model.ParameterAnnotations;
 import com.homing_labs.cq.lang.java.model.Parameters;
 import com.homing_labs.cq.lang.java.model.Persistence;
 import com.homing_labs.cq.lang.java.model.PrimitiveType;
+import com.homing_labs.cq.lang.java.model.ProcessedSource;
 import com.homing_labs.cq.lang.java.model.RecordComponentValue;
 import com.homing_labs.cq.lang.java.model.Retention;
 import com.homing_labs.cq.lang.java.model.Synchronisation;
@@ -111,12 +112,12 @@ class ClassFileAttributesTest {
         final Attributes plain = ClassFileAttributes.INSTANCE.of(Plain.class);
         assertEquals(ClassKind.Class.INSTANCE, plain.kind());
         assertEquals(new Entry.One(ClassProperty.Visibility.INSTANCE,
-                        new WithSource<>(Visibility.Public.INSTANCE, Optional.empty())),
+                        new WithSource<>(Visibility.Public.INSTANCE, new ProcessedSource.Unavailable<>())),
                 plain.entry(ClassProperty.Visibility.INSTANCE));
         assertEquals(List.of(Extensibility.Open.INSTANCE),
                 values(plain, ClassProperty.Extensibility.INSTANCE, Extensibility.class));
         assertEquals(new Entry.ZeroOrOne(Superclass.INSTANCE,
-                        Optional.of(new WithSource<>(named(Object.class), Optional.empty()))),
+                        Optional.of(new WithSource<>(named(Object.class), new ProcessedSource.Unavailable<>()))),
                 plain.entry(Superclass.INSTANCE));
         assertEquals(List.of(new ConstructorValue(new Parameters(List.of()), new ClassNames(List.of()),
                         Optional.empty(), Visibility.Public.INSTANCE, Arity.Fixed.INSTANCE, Origin.Declared.INSTANCE,
