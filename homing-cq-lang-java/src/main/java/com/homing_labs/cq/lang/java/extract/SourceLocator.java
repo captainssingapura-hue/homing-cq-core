@@ -48,6 +48,7 @@ import com.homing_labs.cq.lang.java.outline.Parameter;
 import com.homing_labs.cq.lang.java.outline.TokenRange;
 import com.homing_labs.cq.lang.java.outline.TypeHeader;
 import com.homing_labs.cq.lang.java.outline.TypeKeyword;
+import com.homing_labs.cq.lang.java.outline.TypeParameter;
 import com.homing_labs.cq.lang.java.outline.TypeText;
 import com.homing_labs.cq.lang.java.taxonomy.MemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
@@ -80,8 +81,8 @@ import java.util.stream.Stream;
  * The source of each value a unit's attributes hold: where the unit's source file writes it, as blocks of code copied
  * out of the file, and what the file says of it there, by the kind of value it is. The class files say what a class
  * has, and the source's outline where each part of it is written; the two are matched by name, and a method or a
- * constructor by the types of its parameters too, erased as the class file has them and matched by the names they are
- * written with.
+ * constructor by its type parameters and the types of its parameters too, as its signature declares them, matched by
+ * the names they are written with.
  *
  * <p>The outline reads a top-level type down to the parts of its body, and its member types' bodies so too, one level
  * down; a type nested deeper is read down to its header, and a method's body is left as tokens. What is written in
@@ -222,20 +223,30 @@ public record SourceLocator() implements StatelessFunctionalObject {
                 .orElseGet(ProcessedSource.Unwritten::new);
     }
 
-    /** A method, by its name and its parameters' types; of overloads not told apart so, the first written. */
     private ProcessedSource<MethodValue> method(final Body body, final MethodValue value) {
         if (generated(value.origin())) {
             return new ProcessedSource.Unwritten<>();
         }
         final Lexed lexed = body.lexed();
-        final List<Candidate> found = matching(methods(lexed, body.parts(), value.name()),
-                qualified(value.signature().map(MethodSignature::parameters).orElse(value.parameters())));
-        if (found.isEmpty() || !(found.getFirst().part() instanceof BodyPart.Method method)) {
+        final Optional<Candidate> found = written(body, value);
+        if (found.isEmpty() || !(found.get().part() instanceof BodyPart.Method method)) {
             return new ProcessedSource.Unwritten<>();
         }
-        return new ProcessedSource.OfMethod(block(lexed, found.getFirst().range()), doc(lexed, method.doc()),
+        return new ProcessedSource.OfMethod(block(lexed, found.get().range()), doc(lexed, method.doc()),
                 parameters(lexed, method.parameters().formal()), method.body().map(range -> block(lexed, range)),
                 method.defaultValue().map(range -> block(lexed, range)));
+    }
+
+    /**
+     * Where a method is written: of the methods of its name, the one with the type parameters and the parameters'
+     * types its signature declares - or, with no signature, its descriptor. Two overloads cannot have one signature;
+     * only types written by names too short to tell two apart leave more than one, and then the first written is taken.
+     */
+    private Optional<Candidate> written(final Body body, final MethodValue value) {
+        return matching(methods(body.lexed(), body.parts(), value.name()),
+                value.signature().map(signature -> variables(signature.typeParameters().items())).orElse(List.of()),
+                qualified(value.signature().map(MethodSignature::parameters).orElse(value.parameters())))
+                .stream().findFirst();
     }
 
     /** A constructor, and, unless it hands over to another, the instance initialisers it runs. */
@@ -245,13 +256,11 @@ public record SourceLocator() implements StatelessFunctionalObject {
             return new ProcessedSource.Unwritten<>();
         }
         final Lexed lexed = body.lexed();
-        final List<Candidate> found = matching(constructors(declared, body),
-                value.signature().map(ConstructorSignature::parameters).map(this::qualified)
-                        .orElseGet(() -> writtenParameters(declared, value.parameters())));
+        final Optional<Candidate> found = written(declared, body, value);
         if (found.isEmpty()) {
             return new ProcessedSource.Unwritten<>();
         }
-        final Candidate candidate = found.getFirst();
+        final Candidate candidate = found.get();
         final CodeBlocks initialisers = delegates(lexed, candidate) ? new CodeBlocks(List.of())
                 : blocks(lexed, instanceInitialisers(lexed, declared.header(), body.parts()));
         return switch (candidate.part()) {
@@ -264,6 +273,15 @@ public record SourceLocator() implements StatelessFunctionalObject {
                     Optional.of(block(lexed, compact.body())), initialisers);
             default -> new ProcessedSource.Unwritten<>();
         };
+    }
+
+    /** Where a constructor is written, as a method is: by the type parameters and the parameters' types it declares. */
+    private Optional<Candidate> written(final Declared declared, final Body body, final ConstructorValue value) {
+        return matching(constructors(declared, body),
+                value.signature().map(signature -> variables(signature.typeParameters().items())).orElse(List.of()),
+                value.signature().map(ConstructorSignature::parameters).map(this::qualified)
+                        .orElseGet(() -> writtenParameters(declared, value.parameters())))
+                .stream().findFirst();
     }
 
     private ProcessedSource<InitialiserValue> initialiser(final Reading reading, final ClassName inClass,
@@ -442,8 +460,9 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /**
-     * Where a local or an anonymous class is declared: in the method, the constructor or the initialisers whose code
-     * declares it, or, when none of those is found, anywhere in the class.
+     * Where a local or an anonymous class is declared: in the method or the constructor whose code declares it - the
+     * one its class file names by its descriptor, written where that method's own source is - or in the initialisers,
+     * or, when none of those is found, anywhere in the class.
      */
     private CodeBlocks enclosing(final Reading reading, final ClassName inClass, final Declared declared,
                                  final Body body, final Enclosure enclosure) {
@@ -451,13 +470,39 @@ public record SourceLocator() implements StatelessFunctionalObject {
         final List<TokenRange> found = switch (enclosure) {
             case Enclosure.InMethod method when method.name().startsWith(LAMBDA) ->
                     inLambda(reading, inClass, declared, body, method.name());
-            case Enclosure.InMethod method ->
-                    ranges(resembling(methods(lexed, body.parts(), method.name()), qualified(method.parameters())));
-            case Enclosure.InConstructor constructor -> ranges(resembling(constructors(declared, body),
-                    writtenParameters(declared, constructor.parameters())));
+            case Enclosure.InMethod method -> values(reading, inClass, MethodValue.class)
+                    .filter(value -> value.name().equals(method.name())
+                            && value.parameters().equals(method.parameters()))
+                    .flatMap(value -> written(body, value).stream())
+                    .map(Candidate::range)
+                    .limit(1)
+                    .toList();
+            case Enclosure.InConstructor constructor -> values(reading, inClass, ConstructorValue.class)
+                    .filter(value -> value.parameters().equals(constructor.parameters()))
+                    .flatMap(value -> written(declared, body, value).stream())
+                    .map(Candidate::range)
+                    .limit(1)
+                    .toList();
             case Enclosure.InInitialiser _ -> initialisers(lexed, body.parts());
         };
         return found.isEmpty() ? blocks(declared.lexed(), List.of(declared.declaration())) : blocks(lexed, found);
+    }
+
+    /** The values of a kind that a class of the unit holds, as its class file has them. */
+    private <T extends Scalar> Stream<T> values(final Reading reading, final ClassName inClass, final Class<T> kind) {
+        final ClassName top = reading.unit.identity().name();
+        final Optional<Attributes> attributes = inClass.equals(top) ? Optional.of(reading.unit.attributes())
+                : nesting(top, reading.unit.attributes(), inClass).flatMap(nesting -> switch (nesting.value()) {
+                    case NestedClass nested -> Optional.of(nested.attributes());
+                    case EnclosedClass enclosed -> Optional.of(enclosed.attributes());
+                    default -> Optional.<Attributes>empty();
+                });
+        return attributes.stream()
+                .flatMap(held -> held.entries().stream())
+                .flatMap(entry -> entry.all().stream())
+                .map(WithSource::object)
+                .filter(kind::isInstance)
+                .map(kind::cast);
     }
 
     /**
@@ -477,16 +522,20 @@ public record SourceLocator() implements StatelessFunctionalObject {
         };
     }
 
-    /** The methods of a body with the name, each with its parameters' types as written. */
+    /** The methods of a body with the name, each with its type parameters and its parameters' types as written. */
     private List<Candidate> methods(final Lexed lexed, final BodyParts parts, final String name) {
         return parts.of(BodyPart.Method.class).stream()
                 .filter(method -> method.name().text().equals(name))
                 .map(method -> new Candidate(trimmed(lexed, method.range(), false),
+                        variables(lexed, method.typeParameters().items()),
                         writtenTypes(lexed, method.parameters().formal()), method.body(), method))
                 .toList();
     }
 
-    /** The constructors of a body - a record's compact one taking its components - each with its parameters' types. */
+    /**
+     * The constructors of a body - a record's compact one taking its components - each with its type parameters and its
+     * parameters' types.
+     */
     private List<Candidate> constructors(final Declared declared, final Body body) {
         final Lexed lexed = body.lexed();
         final List<Candidate> found = new ArrayList<>();
@@ -494,9 +543,11 @@ public record SourceLocator() implements StatelessFunctionalObject {
             switch (part) {
                 case BodyPart.Constructor constructor -> found.add(new Candidate(
                         trimmed(lexed, constructor.range(), false),
+                        variables(lexed, constructor.typeParameters().items()),
                         writtenTypes(lexed, constructor.parameters().formal()), constructor.body(), constructor));
                 case BodyPart.CompactConstructor compact -> found.add(new Candidate(
-                        trimmed(lexed, compact.range(), false), componentTypes(declared), Optional.empty(), compact));
+                        trimmed(lexed, compact.range(), false), List.of(), componentTypes(declared), Optional.empty(),
+                        compact));
                 default -> {
                 }
             }
@@ -532,23 +583,61 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /**
-     * The candidates whose parameters are of the types the class file has, and of those the ones that name them most
-     * fully: {@code PlatformLogger.Level} is the one of two overloads that takes it, and {@code Level}, written in the
-     * other, can then only be another {@code Level}. When none fits so, those whose types have the class file's simple
-     * names: a member type a class inherits can be written by that class's name,
-     * {@code JCMemberReference.ReferenceMode} for {@code MemberReferenceTree.ReferenceMode}. A method's or a
-     * constructor's own types are matched so: its signature keeps a type variable as it is named, where its descriptor
-     * erases it.
+     * The candidates that declare the type parameters the class file's signature has, by name and bounds, and take
+     * parameters of its types, and of those the ones that name them most fully: {@code PlatformLogger.Level} is the one
+     * of two overloads that takes it, and {@code Level}, written in the other, can then only be another {@code Level}.
+     * When none fits so, those whose types have the class file's simple names: a member type a class inherits can be
+     * written by that class's name, {@code JCMemberReference.ReferenceMode} for
+     * {@code MemberReferenceTree.ReferenceMode}. The signature keeps a type variable as it is named, and its bounds:
+     * {@code <T extends Number> pick(T)} and {@code <T extends CharSequence> pick(T)} are told apart by T's, and
+     * {@code put(T)}, taking its class's T, from {@code <T> put(T)}, which declares its own.
      */
-    private List<Candidate> matching(final List<Candidate> candidates, final List<String> parameters) {
+    private List<Candidate> matching(final List<Candidate> candidates, final List<Variable> variables,
+                                     final List<String> parameters) {
         final List<Candidate> qualified = candidates.stream()
-                .filter(candidate -> fit(candidate.parameters(), parameters, this::fits))
+                .filter(candidate -> fit(candidate, variables, parameters, this::fits))
                 .toList();
         final List<Candidate> fitting = !qualified.isEmpty() ? qualified : candidates.stream()
-                .filter(candidate -> fit(candidate.parameters(), parameters, this::sameSimpleName))
+                .filter(candidate -> fit(candidate, variables, parameters, this::sameSimpleName))
                 .toList();
-        final int fullest = fitting.stream().mapToInt(candidate -> names(candidate.parameters())).max().orElse(0);
-        return fitting.stream().filter(candidate -> names(candidate.parameters()) == fullest).toList();
+        final int fullest = fitting.stream().mapToInt(this::names).max().orElse(0);
+        return fitting.stream().filter(candidate -> names(candidate) == fullest).toList();
+    }
+
+    /** Whether a candidate declares the type variables and takes parameters of the types, its names fitting theirs. */
+    private boolean fit(final Candidate candidate, final List<Variable> variables, final List<String> parameters,
+                        final BiPredicate<String, String> fits) {
+        if (candidate.typeParameters().size() != variables.size()) {
+            return false;
+        }
+        for (int at = 0; at < variables.size(); at++) {
+            final Variable written = candidate.typeParameters().get(at);
+            final Variable compiled = variables.get(at);
+            if (!written.name().equals(compiled.name()) || !fit(written.bounds(), compiled.bounds(), fits)) {
+                return false;
+            }
+        }
+        return fit(candidate.parameters(), parameters, fits);
+    }
+
+    /** Type parameters as a signature declares them: each by its name and its bounds' qualified names. */
+    private List<Variable> variables(final List<TypeParameterValue> parameters) {
+        return parameters.stream()
+                .map(parameter -> new Variable(parameter.name(),
+                        parameter.bounds().items().stream().map(this::qualified).toList()))
+                .toList();
+    }
+
+    /**
+     * Type parameters as written: each by its name and its bounds by the names they are written with. One written with
+     * no bound is bounded by {@code Object}, as a signature has it.
+     */
+    private List<Variable> variables(final Lexed lexed, final List<TypeParameter> parameters) {
+        return parameters.stream()
+                .map(parameter -> new Variable(parameter.name().text(), parameter.bounds().items().isEmpty()
+                        ? List.of("Object")
+                        : parameter.bounds().items().stream().map(bound -> erased(lexed, bound.range(), 0)).toList()))
+                .toList();
     }
 
     private boolean fit(final List<String> written, final List<String> compiled,
@@ -582,21 +671,16 @@ public record SourceLocator() implements StatelessFunctionalObject {
         return written.equals(compiled) || compiled.endsWith("." + written);
     }
 
+    /** How many names a candidate's parameters' types and its type parameters' bounds are written with, all told. */
+    private int names(final Candidate candidate) {
+        return names(candidate.parameters()) + candidate.typeParameters().stream()
+                .mapToInt(variable -> names(variable.bounds()))
+                .sum();
+    }
+
     /** How many names the types are written with, all told. */
     private int names(final List<String> written) {
         return written.stream().mapToInt(type -> type.split("\\.").length).sum();
-    }
-
-    /**
-     * The candidates whose parameters are of the erased types the class file has, or, with none, those that take as
-     * many: the method that encloses a class is named by its descriptor alone, which erases a type variable to its
-     * bound.
-     */
-    private List<Candidate> resembling(final List<Candidate> candidates, final List<String> erased) {
-        final List<Candidate> typed = matching(candidates, erased);
-        return !typed.isEmpty() ? typed : candidates.stream()
-                .filter(candidate -> candidate.parameters().size() == erased.size())
-                .toList();
     }
 
     private List<TokenRange> ranges(final List<Candidate> candidates) {
@@ -1011,7 +1095,15 @@ public record SourceLocator() implements StatelessFunctionalObject {
     private record Nesting(ClassName in, ObjectKind object, Scalar value) {
     }
 
-    /** A method or a constructor as written: where, its parameters' types erased to the names written, and its body. */
-    private record Candidate(TokenRange range, List<String> parameters, Optional<TokenRange> body, BodyPart part) {
+    /**
+     * A method or a constructor as written: where, its type parameters, its parameters' types erased to the names
+     * written, and its body.
+     */
+    private record Candidate(TokenRange range, List<Variable> typeParameters, List<String> parameters,
+                             Optional<TokenRange> body, BodyPart part) {
+    }
+
+    /** A type parameter: its name, and its bounds by their names - as written, or as a signature declares them. */
+    private record Variable(String name, List<String> bounds) {
     }
 }

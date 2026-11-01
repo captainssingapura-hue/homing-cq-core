@@ -68,6 +68,21 @@ public class Placed<T extends Comparable<T>> extends AbstractList<T> implements 
         return 0;
     }
 
+    /** Written as the next is: only the bound of its own T tells them apart. */
+    <T extends Number> String picked(final T value) {
+        return new Object() { }.toString();
+    }
+
+    <T extends CharSequence> String picked(final T value) {
+        return new Object() { }.toString();
+    }
+
+    void put(final T value) { // the class's T
+    }
+
+    <T> void put(final T value) { // a T of its own
+    }
+
     Runnable local() {
         class Local implements Runnable {
             @Override

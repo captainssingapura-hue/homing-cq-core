@@ -144,6 +144,30 @@ class SourceLocatorTest {
     }
 
     @Test
+    void overloadsWrittenAlikeAreToldApartByTheTypeParametersTheirSignaturesDeclare() {
+        assertEquals("/** Written as the next is: only the bound of its own T tells them apart. */"
+                        + " <T extends Number> String picked(final T value) { return new Object() { }.toString(); }",
+                squashed(method(Placed.class, Method.Implementation.INSTANCE,
+                        takes("picked", named("java.lang.Number"))).block()));
+        assertEquals("<T extends CharSequence> String picked(final T value) { return new Object() { }.toString(); }",
+                squashed(method(Placed.class, Method.Implementation.INSTANCE,
+                        takes("picked", named("java.lang.CharSequence"))).block()));
+        assertEquals("void put(final T value) { // the class's T }", squashed(method(Placed.class,
+                Method.Implementation.INSTANCE, takes("put", named("java.lang.Comparable"))).block()));
+        assertEquals("<T> void put(final T value) { // a T of its own }", squashed(method(Placed.class,
+                Method.Implementation.INSTANCE, takes("put", named("java.lang.Object"))).block()));
+    }
+
+    @Test
+    void anAnonymousClassIsWithinTheOverloadItsClassFileNames() {
+        assertEquals(List.of("/** Written as the next is: only the bound of its own T tells them apart. */"
+                + " <T extends Number> String picked"), heads(within(sourceOf(Placed.class,
+                AnonymousClass.INSTANCE, value -> ((EnclosedClass) value).name().equals(name("Placed$1"))))));
+        assertEquals(List.of("<T extends CharSequence> String picked"), heads(within(sourceOf(Placed.class,
+                AnonymousClass.INSTANCE, value -> ((EnclosedClass) value).name().equals(name("Placed$2"))))));
+    }
+
+    @Test
     void aMethodTheCompilerGeneratedIsWrittenNowhere() {
         final ProcessedSource.OfMethod get = method(Placed.class, Method.Implementation.INSTANCE,
                 value -> value instanceof MethodValue method && method.name().equals("get")
@@ -466,7 +490,12 @@ class SourceLocatorTest {
     }
 
     private Predicate<Scalar> overloaded(final TypeUse... parameters) {
-        return value -> value instanceof MethodValue method && method.name().equals("overloaded")
+        return takes("overloaded", parameters);
+    }
+
+    /** A method by its name and its parameters' types, as its descriptor has them. */
+    private Predicate<Scalar> takes(final String name, final TypeUse... parameters) {
+        return value -> value instanceof MethodValue method && method.name().equals(name)
                 && method.parameters().items().equals(List.of(parameters));
     }
 
@@ -488,6 +517,11 @@ class SourceLocatorTest {
     private List<String> within(final ProcessedSource<?> source) {
         return assertInstanceOf(ProcessedSource.Within.class, source).blocks().items().stream()
                 .map(this::squashed).toList();
+    }
+
+    /** How blocks start: each up to its opening parenthesis. */
+    private List<String> heads(final List<String> blocks) {
+        return blocks.stream().map(block -> block.substring(0, block.indexOf('('))).toList();
     }
 
     private List<String> names(final WrittenParameters parameters) {
