@@ -162,7 +162,7 @@ final class FileScan extends TokenScan {
     /** Whether what follows is shaped like a method or a field: a type, a name, and what follows a member's name. */
     private boolean memberShaped() {
         int index = is("<") ? pastAngles(at) : at;
-        if (!(identifier(index) || is(index, "void") || keyword(index) && PRIMITIVES.contains(text(index)))) {
+        if (!(identifier(index) || is(index, "void") || keyword(index) && primitive(text(index)))) {
             return false;
         }
         index = next(index);
@@ -244,7 +244,7 @@ final class FileScan extends TokenScan {
     boolean startsPart(final int index) {
         return is(index, "package") || is(index, "import") || is(index, "@") || is(index, "class")
                 || is(index, "interface") || is(index, "enum") || is(index, "record") && identifier(next(index))
-                || keyword(index) && MODIFIER_KEYWORDS.contains(text(index));
+                || keyword(index) && modifierWord(text(index));
     }
 
     private void found(final int start, final Function<TokenRange, FilePart> part) {

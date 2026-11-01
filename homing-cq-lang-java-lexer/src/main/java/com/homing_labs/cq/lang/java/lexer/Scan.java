@@ -4,22 +4,9 @@ import hue.captains.singapura.tao.ontology.Mutable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /** One pass of the lexer over one source text: where it is, and the tokens and the diagnostics found so far. */
 final class Scan implements Mutable {
-
-    private static final Set<String> KEYWORDS = Set.of("abstract", "assert", "boolean", "break", "byte", "case",
-            "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends",
-            "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface",
-            "long", "native", "new", "package", "private", "protected", "public", "return", "short", "static",
-            "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void",
-            "volatile", "while", "_");
-
-    /** The operators, longest first so the longest that fits is taken; {@code >} is never part of a longer one. */
-    private static final List<String> OPERATORS = List.of("<<=", "->", "==", "<=", "!=", "&&", "||", "++", "--",
-            "<<", "+=", "-=", "*=", "/=", "&=", "|=", "^=", "%=", "=", ">", "<", "!", "~", "?", ":", "+", "-", "*",
-            "/", "&", "|", "^", "%");
 
     private static final String SEPARATORS = "(){}[];,.@";
 
@@ -110,7 +97,7 @@ final class Scan implements Mutable {
             cursor.advanceCodePoint();
         }
         final String word = cursor.since(start);
-        if (KEYWORDS.contains(word)) {
+        if (keyword(word)) {
             emit(TokenKind.Keyword.INSTANCE, start);
         } else if (word.equals("true") || word.equals("false")) {
             emit(TokenKind.BooleanLiteral.INSTANCE, start);
@@ -119,6 +106,19 @@ final class Scan implements Mutable {
         } else {
             emit(TokenKind.Identifier.INSTANCE, start);
         }
+    }
+
+    /** Whether the word is a keyword (JLS 3.9): a reserved one, or {@code _}. */
+    private boolean keyword(final String word) {
+        return switch (word) {
+            case "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const",
+                    "continue", "default", "do", "double", "else", "enum", "extends", "final", "finally", "float",
+                    "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native",
+                    "new", "package", "private", "protected", "public", "return", "short", "static", "strictfp",
+                    "super", "switch", "synchronized", "this", "throw", "throws", "transient", "try", "void",
+                    "volatile", "while", "_" -> true;
+            default -> false;
+        };
     }
 
     /** A number (JLS 3.10.1, 3.10.2): its digits, its point, its exponent and its suffix, each where it may be. */
@@ -311,7 +311,7 @@ final class Scan implements Mutable {
             emit(TokenKind.Separator.INSTANCE, start);
             return;
         }
-        for (final String operator : OPERATORS) {
+        for (final String operator : operators()) {
             if (cursor.matches(operator)) {
                 cursor.advance(operator.length());
                 emit(TokenKind.Operator.INSTANCE, start);
@@ -322,6 +322,12 @@ final class Scan implements Mutable {
         cursor.advanceCodePoint();
         emit(TokenKind.Error.INSTANCE, start);
         error(start, cursor.mark(), String.format("illegal character: '\\u%04x'", c));
+    }
+
+    /** The operators, longest first so the longest that fits is taken; {@code >} is never part of a longer one. */
+    private List<String> operators() {
+        return List.of("<<=", "->", "==", "<=", "!=", "&&", "||", "++", "--", "<<", "+=", "-=", "*=", "/=", "&=",
+                "|=", "^=", "%=", "=", ">", "<", "!", "~", "?", ":", "+", "-", "*", "/", "&", "|", "^", "%");
     }
 
     private void emit(final TokenKind kind, final int start) {

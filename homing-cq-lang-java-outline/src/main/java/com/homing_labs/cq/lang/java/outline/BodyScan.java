@@ -510,7 +510,7 @@ final class BodyScan extends TokenScan {
      */
     private TypeText type() {
         final int start = at;
-        if (keyword(at) && (PRIMITIVES.contains(text(at)) || is("void"))) {
+        if (keyword(at) && (primitive(text(at)) || is("void"))) {
             advance();
         } else if (identifier(at)) {
             advance();
@@ -536,7 +536,7 @@ final class BodyScan extends TokenScan {
     }
 
     private boolean typeStart(final int index) {
-        return identifier(index) || keyword(index) && (PRIMITIVES.contains(text(index)) || is(index, "void"));
+        return identifier(index) || keyword(index) && (primitive(text(index)) || is(index, "void"));
     }
 
     /** Steps over type arguments, in their angle brackets; a diagnostic where none closes them before a type ends. */
@@ -652,7 +652,7 @@ final class BodyScan extends TokenScan {
                 continue;
             } else if (!(identifier(index) || is(index, ".") || is(index, ",") || is(index, "?") || is(index, "&")
                     || is(index, "[") || is(index, "]") || is(index, "extends") || is(index, "super")
-                    || keyword(index) && PRIMITIVES.contains(text(index)))) {
+                    || keyword(index) && primitive(text(index)))) {
                 return from;
             }
             index = next(index);
@@ -763,7 +763,7 @@ final class BodyScan extends TokenScan {
     boolean startsPart(final int index) {
         return is(index, "@") || is(index, "class") || is(index, "interface") || is(index, "enum")
                 || is(index, "record") && identifier(next(index))
-                || keyword(index) && MODIFIER_KEYWORDS.contains(text(index));
+                || keyword(index) && modifierWord(text(index));
     }
 
     private void found(final int start, final Function<TokenRange, BodyPart> part) {

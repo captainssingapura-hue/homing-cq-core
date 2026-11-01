@@ -26,43 +26,6 @@ import java.util.Set;
  */
 abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
 
-    static final Set<String> MODIFIER_KEYWORDS = Set.of("public", "protected", "private", "abstract", "static",
-            "final", "strictfp", "transient", "volatile", "synchronized", "native", "default");
-
-    /** Words no type may be named, so the grammar can read them as keywords where it has them (JLS 3.9). */
-    static final Set<String> RESTRICTED_NAMES = Set.of("permits", "record", "sealed", "var", "yield");
-
-    static final Set<String> PRIMITIVES = Set.of("boolean", "byte", "char", "short", "int", "long", "float",
-            "double");
-
-    private static final Set<String> CLAUSE_WORDS = Set.of("extends", "implements", "permits");
-
-    /** Modifiers that place a type in another type, which a top-level type is not. */
-    private static final Set<String> MEMBER_ONLY = Set.of("protected", "private", "static");
-
-    /** The modifier words in the order of javac's flags for them, which is the order it names two of them in. */
-    private static final List<String> FLAG_ORDER = List.of("public", "private", "protected", "static", "final",
-            "synchronized", "volatile", "transient", "native", "abstract", "strictfp", "default", "sealed",
-            "non-sealed");
-
-    /**
-     * Modifiers no declaration may have one of the first and one of the second of, in the order javac checks them
-     * (Check.checkFlags); it says the first two it finds only. A type is not checked against the first nor the
-     * seventh.
-     */
-    private static final List<List<List<String>>> CONTRADICTIONS = List.of(
-            List.of(List.of("abstract"), List.of("private", "static", "default")),
-            List.of(List.of("static", "private"), List.of("default")),
-            List.of(List.of("abstract"), List.of("final", "native", "synchronized")),
-            List.of(List.of("public"), List.of("private", "protected")),
-            List.of(List.of("private"), List.of("public", "protected")),
-            List.of(List.of("final"), List.of("volatile")),
-            List.of(List.of("abstract", "native"), List.of("strictfp")),
-            List.of(List.of("final"), List.of("sealed", "non-sealed")),
-            List.of(List.of("sealed"), List.of("final", "non-sealed")));
-
-    private static final Set<Integer> NOT_FOR_TYPES = Set.of(0, 6);
-
     final TokenStream stream;
 
     final List<Diagnostic> diagnostics;
@@ -162,7 +125,7 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
         final TypeKeyword keyword = header.keyword();
         final Set<String> allowed = new HashSet<>(allowed(keyword));
         if (enclosing.isEmpty()) {
-            allowed.removeAll(MEMBER_ONLY);
+            allowed.removeAll(memberOnly());
         } else if (enclosing.get() instanceof TypeKeyword.Interface
                 || enclosing.get() instanceof TypeKeyword.Annotation) {
             allowed.removeAll(Set.of("protected", "private"));
@@ -212,12 +175,14 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
 
     /** The first two words written that contradict each other, as javac checks them in turn. */
     private Optional<String> contradiction(final Set<String> written, final boolean type) {
-        for (int index = 0; index < CONTRADICTIONS.size(); index++) {
-            if (type && NOT_FOR_TYPES.contains(index)) {
+        final List<List<List<String>>> contradictions = contradictions();
+        final List<String> flagOrder = flagOrder();
+        for (int index = 0; index < contradictions.size(); index++) {
+            if (type && (index == 0 || index == 6)) {
                 continue;
             }
-            final Optional<String> first = firstWritten(written, CONTRADICTIONS.get(index).get(0));
-            final Optional<String> second = firstWritten(written, CONTRADICTIONS.get(index).get(1));
+            final Optional<String> first = firstWritten(written, contradictions.get(index).get(0), flagOrder);
+            final Optional<String> second = firstWritten(written, contradictions.get(index).get(1), flagOrder);
             if (first.isPresent() && second.isPresent()) {
                 return Optional.of(first.get() + " and " + second.get());
             }
@@ -225,8 +190,38 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
         return Optional.empty();
     }
 
-    private Optional<String> firstWritten(final Set<String> written, final List<String> words) {
-        return FLAG_ORDER.stream().filter(words::contains).filter(written::contains).findFirst();
+    private Optional<String> firstWritten(final Set<String> written, final List<String> words,
+                                          final List<String> flagOrder) {
+        return flagOrder.stream().filter(words::contains).filter(written::contains).findFirst();
+    }
+
+    /**
+     * Modifiers no declaration may have one of the first and one of the second of, in the order javac checks them
+     * (Check.checkFlags); it says the first two it finds only. A type is not checked against the first nor the
+     * seventh.
+     */
+    private List<List<List<String>>> contradictions() {
+        return List.of(
+                List.of(List.of("abstract"), List.of("private", "static", "default")),
+                List.of(List.of("static", "private"), List.of("default")),
+                List.of(List.of("abstract"), List.of("final", "native", "synchronized")),
+                List.of(List.of("public"), List.of("private", "protected")),
+                List.of(List.of("private"), List.of("public", "protected")),
+                List.of(List.of("final"), List.of("volatile")),
+                List.of(List.of("abstract", "native"), List.of("strictfp")),
+                List.of(List.of("final"), List.of("sealed", "non-sealed")),
+                List.of(List.of("sealed"), List.of("final", "non-sealed")));
+    }
+
+    /** The modifier words in the order of javac's flags for them, which is the order it names two of them in. */
+    private List<String> flagOrder() {
+        return List.of("public", "private", "protected", "static", "final", "synchronized", "volatile", "transient",
+                "native", "abstract", "strictfp", "default", "sealed", "non-sealed");
+    }
+
+    /** Modifiers that place a type in another type, which a top-level type is not. */
+    private Set<String> memberOnly() {
+        return Set.of("protected", "private", "static");
     }
 
     private void checkClauses(final TypeKeyword keyword, final List<Clause> clauses) {
@@ -292,7 +287,7 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
             final int start = at;
             if (is("@") && !is(next(at), "interface")) {
                 items.add(annotation());
-            } else if (keyword(at) && MODIFIER_KEYWORDS.contains(text(at))) {
+            } else if (keyword(at) && modifierWord(text(at))) {
                 advance();
                 items.add(new ModifierItem.Word(text(start), new TokenRange(start, last + 1)));
             } else if (is("sealed") && (identifier(next(at)) || keyword(next(at)) || is(next(at), "@"))) {
@@ -362,7 +357,7 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
         final int index = at;
         advance();
         final Name name = new Name(text(index), new TokenRange(index, index + 1));
-        if (RESTRICTED_NAMES.contains(name.text())) {
+        if (restrictedName(name.text())) {
             error("'" + name.text() + "' is a restricted name: it cannot name a type", name.range());
         }
         return name;
@@ -475,7 +470,7 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
             final ClauseWord word = is("extends") ? ClauseWord.Extends.INSTANCE
                     : is("implements") ? ClauseWord.Implements.INSTANCE : ClauseWord.Permits.INSTANCE;
             advance();
-            final List<TypeText> types = types(",", CLAUSE_WORDS);
+            final List<TypeText> types = types(",", Set.of("extends", "implements", "permits"));
             clauses.add(new Clause(word, new TypeTexts(types), new TokenRange(start, last + 1)));
         }
         return clauses;
@@ -637,6 +632,31 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
 
     boolean keyword(final int index) {
         return index < size() && stream.get(index).kind() instanceof TokenKind.Keyword;
+    }
+
+    /** Whether the keyword is a modifier, besides {@code sealed} and {@code non-sealed}, which are not keywords. */
+    boolean modifierWord(final String keyword) {
+        return switch (keyword) {
+            case "public", "protected", "private", "abstract", "static", "final", "strictfp", "transient", "volatile",
+                    "synchronized", "native", "default" -> true;
+            default -> false;
+        };
+    }
+
+    /** Whether the keyword names a primitive type. */
+    boolean primitive(final String keyword) {
+        return switch (keyword) {
+            case "boolean", "byte", "char", "short", "int", "long", "float", "double" -> true;
+            default -> false;
+        };
+    }
+
+    /** Whether no type may be named the word, so the grammar can read it as a keyword where it has one (JLS 3.9). */
+    private boolean restrictedName(final String word) {
+        return switch (word) {
+            case "permits", "record", "sealed", "var", "yield" -> true;
+            default -> false;
+        };
     }
 
     void error(final String message, final TokenRange range) {
