@@ -1,7 +1,7 @@
 package com.homing_labs.cq.demo.enforce;
 
 import com.homing_labs.cq.core.def.lang.JavaLang;
-import com.homing_labs.cq.demo.principle.SmallEnoughToReadWhole;
+import com.homing_labs.cq.demo.principle.DivideAndConquer;
 import com.homing_labs.cq.demo.rule.MethodsWithin50Lines;
 import com.homing_labs.cq.demo.rule.TopLevelClassesWithin250Lines;
 import com.homing_labs.cq.enforcer.def.EnforcerSignature;
@@ -91,10 +91,10 @@ class SizeRulesEnforcerTest {
 
     @Test
     void eachEnforcerSaysWhatItIsFor() {
-        assertEquals(new EnforcerSignature(JavaLang.class, SmallEnoughToReadWhole.class,
+        assertEquals(new EnforcerSignature(JavaLang.class, DivideAndConquer.class,
                         TopLevelClassesWithin250Lines.class, JavaUnit.class),
                 Enforcers.INSTANCE.signatureOf(TopLevelClassesWithin250LinesEnforcer.INSTANCE));
-        assertEquals(new EnforcerSignature(JavaLang.class, SmallEnoughToReadWhole.class, MethodsWithin50Lines.class,
+        assertEquals(new EnforcerSignature(JavaLang.class, DivideAndConquer.class, MethodsWithin50Lines.class,
                         JavaUnit.class),
                 Enforcers.INSTANCE.signatureOf(MethodsWithin50LinesEnforcer.INSTANCE));
     }
