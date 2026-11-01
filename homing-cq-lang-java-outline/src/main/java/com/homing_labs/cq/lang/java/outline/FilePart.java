@@ -35,7 +35,7 @@ public sealed interface FilePart extends Scalar {
 
     /**
      * A type: its header, read in full, its body - its braces and all between them - and the parts of its body, each
-     * read down to its own body, which is left as tokens.
+     * read down to its own body, which is left as tokens; but a member type's body is read too, one level down.
      */
     record TypeDeclaration(TypeHeader header, TokenRange body, BodyEnd end, BodyParts parts, TokenRange range)
             implements FilePart {

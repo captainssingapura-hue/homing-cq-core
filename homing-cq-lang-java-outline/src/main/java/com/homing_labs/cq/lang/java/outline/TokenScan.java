@@ -19,9 +19,10 @@ import java.util.Set;
  * of a file share - its diagnostics, the ranges left unread, and the queue of its documentation comments. Comments are
  * stepped over; the token being read is never one.
  *
- * <p>A file is read by a {@link FileScan}, and the body of each of its types by a {@link BodyScan} of its own. What
- * reads a declaration's header - its modifiers, its type parameters, a type's header in full - is here, for both, and
- * so is what the grammar asks of the modifiers written.</p>
+ * <p>A file is read by a {@link FileScan}, and the body of each of its types by a {@link BodyScan} of its own; so is
+ * the body of each of their member types, from a block of code lexed on its own. What reads a declaration's header -
+ * its modifiers, its type parameters, a type's header in full - is here, for both, and so is what the grammar asks of
+ * the modifiers written.</p>
  */
 abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
 
@@ -87,6 +88,17 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
         this.limit = stream.size();
         this.last = -1;
         this.at = significant(0);
+    }
+
+    /** A reading of some of the tokens of a block of code lexed on its own: what it finds is its own. */
+    TokenScan(final TokenStream block, final TokenRange tokens) {
+        this.stream = block;
+        this.diagnostics = new ArrayList<>();
+        this.unread = new ArrayList<>();
+        this.docs = new DocCommentQueue();
+        this.limit = tokens.to();
+        this.last = tokens.from() - 1;
+        this.at = significant(tokens.from());
     }
 
     /** A reading of some of the tokens another reading has stepped over, sharing what it has found. */
@@ -528,16 +540,24 @@ abstract sealed class TokenScan implements Mutable permits FileScan, BodyScan {
         return false;
     }
 
-    /** Steps over the parentheses here and all between them; a semicolon, which none can hold, stops it short. */
+    /**
+     * Steps over the parentheses here and all between them. A semicolon stops it short, unless it is in braces between
+     * them - a lambda's body, or an anonymous class's - as nothing else in parentheses can hold one.
+     */
     void skipParentheses() {
         final int open = at;
         int depth = 0;
-        while (at < size() && !is(";")) {
+        int braces = 0;
+        while (at < size() && !(is(";") && braces == 0)) {
             if (is("(")) {
                 depth++;
             } else if (is(")") && --depth == 0) {
                 advance();
                 return;
+            } else if (is("{")) {
+                braces++;
+            } else if (is("}") && braces > 0) {
+                braces--;
             }
             advance();
         }

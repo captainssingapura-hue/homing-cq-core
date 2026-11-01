@@ -80,4 +80,22 @@ public class Placed<T extends Comparable<T>> extends AbstractList<T> implements 
     static class Member {
         int inside;
     }
+
+    /** An inner class: javac gives its constructors the object of this class first. */
+    class Inner {
+
+        static final int LIMIT = 3;
+
+        static int made = LIMIT + count();
+
+        final int count;
+
+        Inner(final int count) {
+            this.count = count;
+        }
+
+        class Deeper {
+            int hidden;
+        }
+    }
 }

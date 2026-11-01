@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -38,8 +39,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Every source file of this project, outlined, and read by javac's own parser: the two agree on the package, the
- * imports, each type's header, and each part of its body - down to where a field's initial value ends - and the outline
- * finds nothing wrong, as all of it compiles.
+ * imports, each type's header, and each part of its body - down to where a field's initial value ends - and of each
+ * member type's body, one level down; and the outline finds nothing wrong, as all of it compiles.
  */
 class JavacAgreementTest {
 
@@ -86,55 +87,64 @@ class JavacAgreementTest {
             });
         }
         for (final FilePart.TypeDeclaration type : outline.types()) {
-            read.add(header(outline, type.header()));
-            type.parts().items().forEach(part -> read.addAll(part(outline, part)));
+            read.add(header(outline::text, type.header()));
+            type.parts().items().forEach(part -> read.addAll(part(outline::text, part, "  ")));
         }
         return read;
     }
 
-    private String header(final Outline outline, final TypeHeader header) {
+    private String header(final Function<TokenRange, String> written, final TypeHeader header) {
         return header.keyword().word() + " " + header.name().text() + modifiers(header.modifiers())
                 + " <" + header.typeParameters().items().stream().map(parameter -> parameter.name().text())
                 .toList() + ">"
                 + " components " + header.components().map(components -> components.items().stream()
                 .map(component -> component.name().text()).toList()).orElse(List.of())
-                + " extends " + texts(outline, header.keyword() instanceof TypeKeyword.Interface
+                + " extends " + texts(written, header.keyword() instanceof TypeKeyword.Interface
                 ? header.superinterfaces() : header.superclass().stream().toList())
-                + " implements " + texts(outline, header.keyword() instanceof TypeKeyword.Interface
+                + " implements " + texts(written, header.keyword() instanceof TypeKeyword.Interface
                 ? List.of() : header.superinterfaces())
-                + " permits " + texts(outline, header.permitted());
+                + " permits " + texts(written, header.permitted());
     }
 
-    /** A part of a type's body as the outline reads it: a field as each of its variables, nothing for a semicolon. */
-    private List<String> part(final Outline outline, final BodyPart part) {
+    /**
+     * A part of a type's body as the outline reads it, with the text its tokens are written with: a field as each of
+     * its variables, nothing for a semicolon, and a member type as its header and, when the outline read its body, the
+     * parts of that body, a level further in.
+     */
+    private List<String> part(final Function<TokenRange, String> written, final BodyPart part, final String indent) {
         return switch (part) {
             case BodyPart.Field field -> field.declarators().items().stream()
-                    .map(declarator -> "  field " + declarator.name().text() + modifiers(field.modifiers()) + " "
-                            + (declarator.dimensions().isEmpty() ? text(outline, field.type().range()) : "dims")
-                            + " = " + declarator.initializer().map(range -> text(outline, range)).orElse("-"))
+                    .map(declarator -> indent + "field " + declarator.name().text() + modifiers(field.modifiers())
+                            + " " + (declarator.dimensions().isEmpty() ? text(written, field.type().range()) : "dims")
+                            + " = " + declarator.initializer().map(range -> text(written, range)).orElse("-"))
                     .toList();
-            case BodyPart.Method method -> List.of("  method " + method.name().text()
+            case BodyPart.Method method -> List.of(indent + "method " + method.name().text()
                     + modifiers(method.modifiers()) + typeParameters(method.typeParameters()) + " "
-                    + (method.dimensions().isEmpty() ? text(outline, method.result().range()) : "dims")
-                    + parameters(outline, method.parameters()) + " throws " + texts(outline, method.thrown().items())
-                    + " default " + method.defaultValue().map(range -> text(outline, range)).orElse("-")
+                    + (method.dimensions().isEmpty() ? text(written, method.result().range()) : "dims")
+                    + parameters(written, method.parameters()) + " throws " + texts(written, method.thrown().items())
+                    + " default " + method.defaultValue().map(range -> text(written, range)).orElse("-")
                     + " body " + method.body().isPresent());
-            case BodyPart.Constructor constructor -> List.of("  constructor " + constructor.name().text()
+            case BodyPart.Constructor constructor -> List.of(indent + "constructor " + constructor.name().text()
                     + modifiers(constructor.modifiers()) + typeParameters(constructor.typeParameters())
-                    + parameters(outline, constructor.parameters())
-                    + " throws " + texts(outline, constructor.thrown().items())
+                    + parameters(written, constructor.parameters())
+                    + " throws " + texts(written, constructor.thrown().items())
                     + " body " + constructor.body().isPresent());
-            case BodyPart.CompactConstructor constructor -> List.of("  compact " + constructor.name().text()
+            case BodyPart.CompactConstructor constructor -> List.of(indent + "compact " + constructor.name().text()
                     + modifiers(constructor.modifiers()));
-            case BodyPart.Initializer initializer -> List.of("  " + (initializer.isStatic() ? "static " : "")
+            case BodyPart.Initializer initializer -> List.of(indent + (initializer.isStatic() ? "static " : "")
                     + "block");
-            case BodyPart.TypeDeclaration type -> List.of("  " + header(outline, type.header()));
-            case BodyPart.EnumConstant constant -> List.of("  constant " + constant.name().text()
+            case BodyPart.TypeDeclaration type -> {
+                final List<String> lines = new ArrayList<>(List.of(indent + header(written, type.header())));
+                type.nested().ifPresent(nested -> nested.parts().items()
+                        .forEach(member -> lines.addAll(part(nested::text, member, indent + "  "))));
+                yield lines;
+            }
+            case BodyPart.EnumConstant constant -> List.of(indent + "constant " + constant.name().text()
                     + " @" + constant.annotations().annotations().size()
-                    + " arguments " + constant.arguments().map(range -> text(outline, range)).orElse("")
+                    + " arguments " + constant.arguments().map(range -> text(written, range)).orElse("")
                     + " body " + constant.body().isPresent());
             case BodyPart.EmptyDeclaration _ -> List.of();
-            case BodyPart.Unrecognised _ -> List.of("  unrecognised");
+            case BodyPart.Unrecognised _ -> List.of(indent + "unrecognised");
         };
     }
 
@@ -147,11 +157,11 @@ class JavacAgreementTest {
         return " <" + parameters.items().stream().map(parameter -> parameter.name().text()).toList() + ">";
     }
 
-    private String parameters(final Outline outline, final Parameters parameters) {
+    private String parameters(final Function<TokenRange, String> written, final Parameters parameters) {
         return " (" + parameters.items().stream().map(parameter -> switch (parameter) {
-            case Parameter.Receiver receiver -> "receiver " + text(outline, receiver.type().range());
+            case Parameter.Receiver receiver -> "receiver " + text(written, receiver.type().range());
             case Parameter.Formal formal -> (formal.dimensions().isEmpty()
-                    ? text(outline, formal.type().range()) + (formal.variable() ? "..." : "") : "dims")
+                    ? text(written, formal.type().range()) + (formal.variable() ? "..." : "") : "dims")
                     + " " + formal.name().text() + modifiers(formal.modifiers());
         }).collect(Collectors.joining(", ")) + ")";
     }
@@ -170,19 +180,19 @@ class JavacAgreementTest {
         for (final Tree tree : unit.getTypeDecls()) {
             if (tree instanceof ClassTree type) {
                 read.add(javac.header(type));
-                type.getMembers().forEach(member -> read.addAll(javac.member(type, member)));
+                type.getMembers().forEach(member -> read.addAll(javac.member(type, member, "  ", true)));
             }
         }
         return read;
     }
 
-    private List<String> texts(final Outline outline, final List<TypeText> types) {
-        return types.stream().map(type -> text(outline, type.range())).toList();
+    private List<String> texts(final Function<TokenRange, String> written, final List<TypeText> types) {
+        return types.stream().map(type -> text(written, type.range())).toList();
     }
 
     /** The text of the tokens, with no whitespace, so that how a type or a value is laid out does not count. */
-    private String text(final Outline outline, final TokenRange range) {
-        return outline.text(range).replaceAll("\\s+", "");
+    private String text(final Function<TokenRange, String> written, final TokenRange range) {
+        return written.apply(range).replaceAll("\\s+", "");
     }
 
     private List<Path> sources() throws IOException {
@@ -220,38 +230,45 @@ class JavacAgreementTest {
         }
 
         /**
-         * A member of the type: a variable a field declares, a method, a block or a member type. javac's parser makes
-         * a record's components its instance fields, and its compact constructor's parameters; an enum constant is a
-         * field whose type is written nowhere.
+         * A member of the type: a variable a field declares, a method, a block or a member type - with its members a
+         * level further in, when they are read. javac's parser makes a record's components its instance fields, and
+         * its compact constructor's parameters; an enum constant is a field whose type is written nowhere.
          */
-        List<String> member(final ClassTree type, final Tree member) {
+        List<String> member(final ClassTree type, final Tree member, final String indent, final boolean readsIn) {
             final String name = type.getSimpleName().toString();
             return switch (member) {
                 case VariableTree field when type.getKind() == Tree.Kind.ENUM && unwritten(field.getType()) -> {
                     final NewClassTree made = (NewClassTree) field.getInitializer();
-                    yield List.of("  constant " + field.getName() + " @" + field.getModifiers().getAnnotations().size()
+                    yield List.of(indent + "constant " + field.getName() + " @"
+                            + field.getModifiers().getAnnotations().size()
                             + " arguments " + arguments(field, made) + " body " + (made.getClassBody() != null));
                 }
                 case VariableTree field when type.getKind() == Tree.Kind.RECORD
                         && !field.getModifiers().getFlags().contains(Modifier.STATIC) -> List.of();
-                case VariableTree field -> List.of("  field " + field.getName() + modifiers(field.getModifiers())
-                        + " " + (dimensioned(field) ? "dims" : text(field.getType()))
+                case VariableTree field -> List.of(indent + "field " + field.getName()
+                        + modifiers(field.getModifiers()) + " " + (dimensioned(field) ? "dims" : text(field.getType()))
                         + " = " + (field.getInitializer() == null ? "-" : text(field.getInitializer())));
                 case MethodTree method when method.getName().contentEquals("<init>") && compact(method) ->
-                        List.of("  compact " + name + modifiers(method.getModifiers()));
-                case MethodTree method when method.getName().contentEquals("<init>") -> List.of("  constructor "
+                        List.of(indent + "compact " + name + modifiers(method.getModifiers()));
+                case MethodTree method when method.getName().contentEquals("<init>") -> List.of(indent + "constructor "
                         + name + modifiers(method.getModifiers()) + " <" + names(method.getTypeParameters()) + ">"
                         + parameters(method) + " throws " + texts(method.getThrows())
                         + " body " + (method.getBody() != null));
-                case MethodTree method -> List.of("  method " + method.getName() + modifiers(method.getModifiers())
-                        + " <" + names(method.getTypeParameters()) + "> "
+                case MethodTree method -> List.of(indent + "method " + method.getName()
+                        + modifiers(method.getModifiers()) + " <" + names(method.getTypeParameters()) + "> "
                         + (text(method.getReturnType()).contains("(") ? "dims" : text(method.getReturnType()))
                         + parameters(method) + " throws " + texts(method.getThrows())
                         + " default " + (method.getDefaultValue() == null ? "-" : text(method.getDefaultValue()))
                         + " body " + (method.getBody() != null));
-                case BlockTree block -> List.of("  " + (block.isStatic() ? "static " : "") + "block");
-                case ClassTree nested -> List.of("  " + header(nested));
-                default -> List.of("  " + member.getKind());
+                case BlockTree block -> List.of(indent + (block.isStatic() ? "static " : "") + "block");
+                case ClassTree nested -> {
+                    final List<String> lines = new ArrayList<>(List.of(indent + header(nested)));
+                    if (readsIn) {
+                        nested.getMembers().forEach(inner -> lines.addAll(member(nested, inner, indent + "  ", false)));
+                    }
+                    yield lines;
+                }
+                default -> List.of(indent + member.getKind());
             };
         }
 

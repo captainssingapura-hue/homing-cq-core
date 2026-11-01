@@ -216,8 +216,9 @@ class BenchPaneTest {
             summary(bench).getSelectionModel().select(line(StaticField.class, Cardinality.ZeroOrMore.INSTANCE, 1));
             return List.of(source.written(), source.within(), List.of(source.placed()));
         });
-        assertEquals(List.of(List.of(), one, List.of("StaticField of ClassKind$Enum: written somewhere in the lightly"
-                + " highlighted code, which is not read yet.")), field, "a member type's body is not read yet");
+        assertEquals(List.of(List.of("public static final Enum INSTANCE = new Enum();"), List.of(),
+                List.of("StaticField of ClassKind$Enum: written where highlighted.")), field,
+                "a member type's body is read too");
     }
 
     @Test
@@ -234,9 +235,13 @@ class BenchPaneTest {
         final String inner = "class Inner { Object make() { class Made { } return new Made(); } class Deeper { } }";
         assertEquals(List.of("NestFixture$Inner is declared where highlighted.", inner),
                 highlighted(source, new Selection(unit, NestFixture.Inner.class), Optional.empty()));
-        assertEquals(List.of("NestFixture$Inner$Deeper is declared somewhere in the lightly highlighted code, which is"
-                        + " not read yet.", "within " + inner),
-                highlighted(source, new Selection(unit, NestFixture.Inner.Deeper.class), Optional.empty()));
+        assertEquals(List.of("NestFixture$Inner$Deeper is declared where highlighted.", "class Deeper { }"),
+                highlighted(source, new Selection(unit, NestFixture.Inner.Deeper.class), Optional.empty()),
+                "a member type's body is read, one level down");
+        assertEquals(List.of("NestFixture$Inner$1Made is declared somewhere in the lightly highlighted code, which is"
+                        + " not read yet.", "within Object make() { class Made { } return new Made(); }"),
+                highlighted(source, new Selection(unit, nested("$Inner$1Made")), Optional.empty()),
+                "a local class in a member type's method");
         assertEquals(List.of("NestFixture$1Local is declared somewhere in the lightly highlighted code, which is not"
                         + " read yet.", "within void declaresALocalClass() { class Local { } }"),
                 highlighted(source, new Selection(unit, nested("$1Local")), Optional.empty()));

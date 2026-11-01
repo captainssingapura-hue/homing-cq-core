@@ -348,6 +348,17 @@ class BodyPartsTest {
     }
 
     @Test
+    void parenthesesHoldASemicolonOnlyInBracesBetweenThem() {
+        final Outline outline = outline("enum E { A(() -> { int x = 1; }), B(new Object() { int y; }); }");
+        assertEquals(List.of("(() -> { int x = 1; })", "(new Object() { int y; })"), outline.types().getFirst()
+                .parts().of(BodyPart.EnumConstant.class).stream()
+                .map(constant -> outline.text(constant.arguments().orElseThrow()))
+                .toList());
+        assertEquals(List.of(), diagnostics(outline));
+        assertEquals(List.of("Error ')' expected: ("), diagnostics(outline("enum E { A(1; }")));
+    }
+
+    @Test
     void aDocumentationCommentInABodyIsSaidToBeAttachedToNoneWhereJavacSaysSo() {
         assertEquals(List.of("Warning documentation comment is not attached to any declaration: /** a */"),
                 diagnostics(outline("class A { /** a */ /** b */ int x; }")));

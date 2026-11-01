@@ -1,6 +1,11 @@
 package com.homing_labs.cq.lang.java.outline;
 
+import com.homing_labs.cq.lang.java.lexer.Diagnostic;
+import com.homing_labs.cq.lang.java.lexer.Diagnostics;
+import com.homing_labs.cq.lang.java.lexer.TokenStream;
+
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -10,11 +15,19 @@ import java.util.function.Function;
  * One reading of a type's body, between its braces: its parts, each a member's header read in full - a field's, a
  * method's, a constructor's, a member type's - or an initializer, an enum constant, or a semicolon. What follows a
  * header - a body, an initial value, the arguments an enum constant is made with - is stepped over, and left unread.
+ *
+ * <p>A top-level type's body passes the body of each of its member types on to the {@link NestedClassParser}, as a
+ * block of code copied out of the file, to be read the same way - a member type's body, read so, passes on nothing.</p>
  */
 final class BodyScan extends TokenScan {
 
-    /** The header of the type whose body this is. */
-    private final TypeHeader type;
+    /** The word the type whose body this is is declared with, and its name. */
+    private final TypeKeyword ownKeyword;
+
+    private final String ownName;
+
+    /** Whether the body of each member type is read too: a top-level type's is, and no other. */
+    private final boolean passesOn;
 
     /** Where each part found starts, and how to make it once its range is known. */
     private final List<Integer> starts = new ArrayList<>();
@@ -24,13 +37,33 @@ final class BodyScan extends TokenScan {
     /** Whether an enum constant was found among the members, which javac says once only. */
     private boolean misplaced;
 
+    /** A reading of a top-level type's body, as the reading of the file has stepped over it. */
     BodyScan(final TokenScan outer, final TypeHeader type, final TokenRange inside) {
         super(outer, inside);
-        this.type = type;
+        this.ownKeyword = type.keyword();
+        this.ownName = type.name().text();
+        this.passesOn = true;
+    }
+
+    /** A reading of a member type's body, from a block of code lexed on its own. */
+    BodyScan(final TokenStream block, final TypeKeyword keyword, final String name, final TokenRange inside) {
+        super(block, inside);
+        this.ownKeyword = keyword;
+        this.ownName = name;
+        this.passesOn = false;
+    }
+
+    /** The body read from a block of code: its parts, and what was found wrong in them, at the block's positions. */
+    NestedBody runNested(final CodeBlock block) {
+        final List<BodyPart> read = run();
+        docs.dangling(stream, unread).forEach(token -> warning("documentation comment is not attached to any"
+                + " declaration", token, token + 1));
+        diagnostics.sort(Comparator.comparingInt(Diagnostic::start));
+        return new NestedBody(block, stream, new BodyParts(read), new Diagnostics(diagnostics));
     }
 
     List<BodyPart> run() {
-        if (type.keyword() instanceof TypeKeyword.Enum) {
+        if (ownKeyword instanceof TypeKeyword.Enum) {
             enumConstants();
         }
         while (at < size()) {
@@ -103,7 +136,7 @@ final class BodyScan extends TokenScan {
      * enum's, and what follows a constant's name.
      */
     private boolean enumConstantShaped() {
-        return type.keyword() instanceof TypeKeyword.Enum && identifier(at) && !text(at).equals(type.name().text())
+        return ownKeyword instanceof TypeKeyword.Enum && identifier(at) && !text(at).equals(ownName)
                 && (is(next(at), "(") || is(next(at), "{") || is(next(at), ",") || is(next(at), ";"));
     }
 
@@ -126,9 +159,26 @@ final class BodyScan extends TokenScan {
         if (!(body.end() instanceof BodyEnd.Missing)) {
             unread.add(body.range());
         }
-        checkHeader(header, Optional.of(type.keyword()));
+        checkHeader(header, Optional.of(ownKeyword));
+        final Optional<NestedBody> nested = passesOn && !(body.end() instanceof BodyEnd.Missing)
+                ? Optional.of(passOn(header, body.range())) : Optional.empty();
         found(header.doc().map(DocComment::token).orElse(start), range -> new BodyPart.TypeDeclaration(header,
-                body.range(), body.end(), range));
+                body.range(), body.end(), nested, range));
+    }
+
+    /**
+     * A member type's body, copied out of the file as a block of code and read by the {@link NestedClassParser}. What
+     * it finds wrong is found wrong in the file, where it is there.
+     */
+    private NestedBody passOn(final TypeHeader header, final TokenRange body) {
+        final int from = stream.get(body.from()).start();
+        final int to = stream.get(body.to() - 1).end();
+        final CodeBlock block = new CodeBlock(stream.source().text().substring(from, to), from,
+                stream.source().position(from).line());
+        final NestedBody read = NestedClassParser.INSTANCE.parse(header.keyword(), header.name().text(), block);
+        read.diagnostics().items().forEach(found -> diagnostics.add(new Diagnostic(found.severity(),
+                found.message(), from + found.start(), from + found.end())));
+        return read;
     }
 
     /** An initializer: a block, static or not; javac reads a block with any other modifier as no member at all. */
@@ -142,7 +192,7 @@ final class BodyScan extends TokenScan {
             checkModifiers(written, Set.of("static"), false, new TokenRange(start, at));
             if (interfaceLike()) {
                 error("initializers not allowed in interfaces", at, at + 1);
-            } else if (type.keyword() instanceof TypeKeyword.Record && !written.has("static")) {
+            } else if (ownKeyword instanceof TypeKeyword.Record && !written.has("static")) {
                 error("instance initializers not allowed in records", at, at + 1);
             }
         }
@@ -165,7 +215,7 @@ final class BodyScan extends TokenScan {
             return;
         }
         if (identifier(at) && is(next(at), "{") && typeParameters.isEmpty()
-                && (type.keyword() instanceof TypeKeyword.Record || text(at).equals(type.name().text()))) {
+                && (ownKeyword instanceof TypeKeyword.Record || text(at).equals(ownName))) {
             compactConstructor(start, doc, modifiers);
             return;
         }
@@ -189,10 +239,10 @@ final class BodyScan extends TokenScan {
     private void constructor(final int start, final Optional<DocComment> doc, final List<ModifierItem> modifiers,
                              final List<TypeParameter> typeParameters) {
         final Name name = memberName();
-        if (!name.text().equals(type.name().text())) {
+        if (!name.text().equals(ownName)) {
             error("invalid method declaration; return type required", name.range());
         } else if (interfaceLike()) {
-            error(noun(type.keyword()) + " has no constructors", name.range());
+            error(noun(ownKeyword) + " has no constructors", name.range());
         }
         final List<Parameter> parameters = parameters();
         final List<TypeText> thrown = thrown();
@@ -201,7 +251,7 @@ final class BodyScan extends TokenScan {
         final boolean bodiless = is(";");
         final Optional<TokenRange> body = methodBody();
         final Modifiers written = new Modifiers(modifiers);
-        checkModifiers(written, type.keyword() instanceof TypeKeyword.Enum ? Set.of("private")
+        checkModifiers(written, ownKeyword instanceof TypeKeyword.Enum ? Set.of("private")
                 : Set.of("public", "protected", "private"), false, header);
         if (bodiless) {
             error("missing method body, or declare abstract", header);
@@ -214,9 +264,9 @@ final class BodyScan extends TokenScan {
     private void compactConstructor(final int start, final Optional<DocComment> doc,
                                     final List<ModifierItem> modifiers) {
         final Name name = memberName();
-        if (!(type.keyword() instanceof TypeKeyword.Record)) {
+        if (!(ownKeyword instanceof TypeKeyword.Record)) {
             error("only a record has a compact constructor", name.range());
-        } else if (!name.text().equals(type.name().text())) {
+        } else if (!name.text().equals(ownName)) {
             error("invalid method declaration; return type required", name.range());
         }
         final TokenRange header = new TokenRange(start, last + 1);
@@ -250,7 +300,7 @@ final class BodyScan extends TokenScan {
         final Modifiers written = new Modifiers(modifiers);
         checkModifiers(written, methodModifiers(written), false, header);
         notVar(result);
-        if (type.keyword() instanceof TypeKeyword.Annotation) {
+        if (ownKeyword instanceof TypeKeyword.Annotation) {
             if (!typeParameters.isEmpty()) {
                 error("elements in annotation interface declarations cannot be generic methods",
                         typeParameters.getFirst().range().from(), typeParameters.getLast().range().to());
@@ -276,7 +326,7 @@ final class BodyScan extends TokenScan {
 
     /** The modifiers a method may have in this type, as javac masks them (Check.checkFlags). */
     private Set<String> methodModifiers(final Modifiers written) {
-        return switch (type.keyword()) {
+        return switch (ownKeyword) {
             case TypeKeyword.Annotation _ -> Set.of("public", "abstract");
             case TypeKeyword.Interface _ -> written.has("default") || written.has("static") || written.has("private")
                     ? Set.of("public", "private", "abstract", "static", "strictfp", "default")
@@ -293,7 +343,7 @@ final class BodyScan extends TokenScan {
      * one, nor an interface's, unless it is a default, static or private one.
      */
     private void checkBody(final Modifiers modifiers, final Optional<TokenRange> body, final TokenRange header) {
-        final boolean declaredOnly = switch (type.keyword()) {
+        final boolean declaredOnly = switch (ownKeyword) {
             case TypeKeyword.Annotation _ -> true;
             case TypeKeyword.Interface _ -> !(modifiers.has("default") || modifiers.has("static")
                     || modifiers.has("private"));
@@ -343,7 +393,7 @@ final class BodyScan extends TokenScan {
                 : Set.of("public", "protected", "private", "static", "final", "transient", "volatile"), false,
                 new TokenRange(start, last + 1));
         notVar(fieldType);
-        if (type.keyword() instanceof TypeKeyword.Record && !written.has("static")) {
+        if (ownKeyword instanceof TypeKeyword.Record && !written.has("static")) {
             error("field declaration must be static (consider replacing field with record component)",
                     first.range());
         }
@@ -670,7 +720,7 @@ final class BodyScan extends TokenScan {
     }
 
     private boolean interfaceLike() {
-        return type.keyword() instanceof TypeKeyword.Interface || type.keyword() instanceof TypeKeyword.Annotation;
+        return ownKeyword instanceof TypeKeyword.Interface || ownKeyword instanceof TypeKeyword.Annotation;
     }
 
     private void unrecognised(final int start) {

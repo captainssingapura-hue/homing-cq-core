@@ -9,8 +9,9 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * A source file read down to the parts of its types' bodies: the tokens it was read from, its parts, and what was found
- * wrong in it. The lexer's diagnostics stay with the tokens.
+ * A source file read down to the parts of its types' bodies, and of their member types': the tokens it was read from,
+ * its parts, and what was found wrong in it, in its member types' bodies too. The lexer's diagnostics stay with the
+ * tokens.
  */
 public record Outline(TokenStream tokens, FileParts parts, Diagnostics diagnostics) implements Scalar {
 

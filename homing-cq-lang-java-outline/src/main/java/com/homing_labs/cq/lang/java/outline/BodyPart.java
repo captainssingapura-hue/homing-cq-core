@@ -60,8 +60,13 @@ public sealed interface BodyPart extends Scalar {
         }
     }
 
-    /** A member type: its header, read in full, and its body - its braces and all between them - left as tokens. */
-    record TypeDeclaration(TypeHeader header, TokenRange body, BodyEnd end, TokenRange range) implements BodyPart {
+    /**
+     * A member type: its header, read in full, and its body - its braces and all between them - as tokens. A top-level
+     * type's member type has that body read too, from a block of code copied out of the file; one level further down,
+     * a member type's body is left unread.
+     */
+    record TypeDeclaration(TypeHeader header, TokenRange body, BodyEnd end, Optional<NestedBody> nested,
+                           TokenRange range) implements BodyPart {
     }
 
     /**

@@ -73,7 +73,7 @@ class SourceLocatorTest {
                 outline(Placed.class), name("Placed")));
         assertEquals(1, placed.size());
         assertTrue(placed.getFirst().startsWith("/** A class with an object of each kind"), placed.getFirst());
-        assertTrue(placed.getFirst().endsWith("static class Member { int inside; } }"), placed.getFirst());
+        assertTrue(placed.getFirst().endsWith("class Deeper { int hidden; } } }"), placed.getFirst());
     }
 
     @Test
@@ -147,13 +147,30 @@ class SourceLocatorTest {
     }
 
     @Test
-    void aMemberTypeIsWrittenThereButWhatItsBodyHoldsOnlyWithinIt() {
+    void aMemberTypesBodyIsReadOneLevelDown() {
         final List<String> member = List.of("static class Member { int inside; }");
         assertEquals(member, written(Placed.class, placeOf(Placed.class, StaticMemberClass.INSTANCE, any -> true)));
         assertEquals(member, written(Placed.class, SourceLocator.INSTANCE.ofClass(unit(Placed.class),
                 outline(Placed.class), name("Placed$Member"))));
-        assertEquals(member, within(Placed.class, placeOf(Placed.class, name("Placed$Member"), Field.INSTANCE,
-                field("inside"))));
+        assertEquals(List.of("int inside;"), written(Placed.class, placeOf(Placed.class, name("Placed$Member"),
+                Field.INSTANCE, field("inside"))));
+    }
+
+    @Test
+    void anInnerClassesConstructorTakesTheEnclosingObjectFirstInTheClassFile() {
+        assertEquals(List.of("Inner(final int count) { this.count = count; }"), written(Placed.class,
+                placeOf(Placed.class, name("Placed$Inner"), Constructor.INSTANCE, any -> true)));
+        assertEquals(List.of("made = LIMIT + count()"), written(Placed.class, placeOf(Placed.class,
+                name("Placed$Inner"), StaticInitialiser.INSTANCE, any -> true)), "its own constants are left out");
+    }
+
+    @Test
+    void aTypeNestedTwoLevelsDownIsWrittenThereButWhatItsBodyHoldsOnlyWithinIt() {
+        final List<String> deeper = List.of("class Deeper { int hidden; }");
+        assertEquals(deeper, written(Placed.class, SourceLocator.INSTANCE.ofClass(unit(Placed.class),
+                outline(Placed.class), name("Placed$Inner$Deeper"))));
+        assertEquals(deeper, within(Placed.class, placeOf(Placed.class, name("Placed$Inner$Deeper"),
+                Field.INSTANCE, field("hidden"))));
     }
 
     @Test
@@ -235,67 +252,89 @@ class SourceLocatorTest {
     }
 
     /**
-     * Over this module's classes and the outline's: each field, method and constructor written in a top-level class is
-     * the place of exactly one in its class file, and every other one in the class file - implied or generated - is
-     * written nowhere.
+     * Over this module's classes, its tests' and the outline's: each field, method and constructor written in a
+     * top-level class, or in a member class of one, is the place of exactly one in its class file, and every other one
+     * in the class file - implied or generated - is written nowhere.
      */
     @Test
     void everyMemberWrittenIsThePlaceOfExactlyOneInTheClassFile() {
-        final List<JavaUnit> read = Stream.concat(JavaUnitReader.INSTANCE.read(JavaUnit.class).stream(),
-                        JavaUnitReader.INSTANCE.read(Outline.class).stream())
+        final List<JavaUnit> read = Stream.of(JavaUnit.class, Outline.class, Placed.class)
+                .flatMap(type -> JavaUnitReader.INSTANCE.read(type).stream())
                 .filter(unit -> unit.source().isPresent())
                 .toList();
         assertTrue(read.size() > 100, read.size() + " units read with their sources");
         final List<String> wrong = new ArrayList<>();
+        int members = 0;
         for (final JavaUnit unit : read) {
             final Outline outline = SourceLocator.INSTANCE.outline(unit).orElseThrow();
             final List<BodyPart> parts = outline.types().stream()
                     .filter(type -> type.header().name().text().equals(unit.type().getSimpleName()))
                     .findFirst().orElseThrow().parts().items();
-            final Set<SourceSpan> methods = new HashSet<>();
-            final Set<SourceSpans> constructors = new HashSet<>();
-            int fields = 0;
+            oneToOne(unit, outline, unit.identity().name(), unit.attributes(), parts, wrong);
             for (final Entry entry : unit.attributes().entries()) {
                 for (final WithSource<? extends Scalar> value : entry.all()) {
-                    final SourcePlace place = SourceLocator.INSTANCE.of(unit, outline, unit.identity().name(),
-                            entry.object(), value.object());
-                    final String what = unit.type().getSimpleName() + " " + value.object();
-                    switch (value.object()) {
-                        case MethodValue _ when place instanceof SourcePlace.Written written -> {
-                            final List<SourceSpan> spans = written.spans().items();
-                            if (spans.size() != 1 || !methods.add(spans.getFirst())) {
-                                wrong.add(what + " is written in " + written.spans());
-                            }
-                        }
-                        case ConstructorValue _ when place instanceof SourcePlace.Written written -> {
-                            if (!constructors.add(written.spans())) {
-                                wrong.add(what + " shares its places with another");
-                            }
-                        }
-                        case FieldValue _ when place instanceof SourcePlace.Written -> fields++;
-                        case MethodValue _, ConstructorValue _, FieldValue _ -> {
-                            if (!(place instanceof SourcePlace.Unwritten)) {
-                                wrong.add(what + " is " + place);
-                            }
-                        }
-                        default -> {
-                        }
+                    if (value.object() instanceof NestedClass nested) {
+                        final String simpleName = nested.name().binaryName()
+                                .substring(unit.identity().name().binaryName().length() + 1);
+                        final List<BodyPart> nestedParts = parts.stream()
+                                .flatMap(part -> part instanceof BodyPart.TypeDeclaration type
+                                        && type.header().name().text().equals(simpleName)
+                                        ? type.nested().stream() : Stream.empty())
+                                .findFirst().orElseThrow().parts().items();
+                        oneToOne(unit, outline, nested.name(), nested.attributes(), nestedParts, wrong);
+                        members++;
                     }
                 }
             }
-            final long declarators = parts.stream().mapToLong(part -> part instanceof BodyPart.Field field
-                    ? field.declarators().items().size() : 0).sum();
-            final long writtenMethods = parts.stream().filter(part -> part instanceof BodyPart.Method).count();
-            final long writtenConstructors = parts.stream().filter(part -> part instanceof BodyPart.Constructor
-                    || part instanceof BodyPart.CompactConstructor).count();
-            if (methods.size() != writtenMethods || constructors.size() != writtenConstructors
-                    || fields != declarators) {
-                wrong.add(unit.type().getSimpleName() + ": " + methods.size() + " of " + writtenMethods + " methods, "
-                        + constructors.size() + " of " + writtenConstructors + " constructors and " + fields + " of "
-                        + declarators + " fields are placed");
+        }
+        assertTrue(members > 10, members + " member classes");
+        assertEquals(List.of(), wrong);
+    }
+
+    /** Each written field, method and constructor of a class is the place of exactly one of its class file's. */
+    private void oneToOne(final JavaUnit unit, final Outline outline, final ClassName inClass,
+                          final Attributes attributes, final List<BodyPart> parts, final List<String> wrong) {
+        final Set<SourceSpan> methods = new HashSet<>();
+        final Set<SourceSpans> constructors = new HashSet<>();
+        int fields = 0;
+        for (final Entry entry : attributes.entries()) {
+            for (final WithSource<? extends Scalar> value : entry.all()) {
+                final SourcePlace place = SourceLocator.INSTANCE.of(unit, outline, inClass, entry.object(),
+                        value.object());
+                final String what = inClass.binaryName() + " " + value.object();
+                switch (value.object()) {
+                    case MethodValue _ when place instanceof SourcePlace.Written written -> {
+                        final List<SourceSpan> spans = written.spans().items();
+                        if (spans.size() != 1 || !methods.add(spans.getFirst())) {
+                            wrong.add(what + " is written in " + written.spans());
+                        }
+                    }
+                    case ConstructorValue _ when place instanceof SourcePlace.Written written -> {
+                        if (!constructors.add(written.spans())) {
+                            wrong.add(what + " shares its places with another");
+                        }
+                    }
+                    case FieldValue _ when place instanceof SourcePlace.Written -> fields++;
+                    case MethodValue _, ConstructorValue _, FieldValue _ -> {
+                        if (!(place instanceof SourcePlace.Unwritten)) {
+                            wrong.add(what + " is " + place);
+                        }
+                    }
+                    default -> {
+                    }
+                }
             }
         }
-        assertEquals(List.of(), wrong);
+        final long declarators = parts.stream().mapToLong(part -> part instanceof BodyPart.Field field
+                ? field.declarators().items().size() : 0).sum();
+        final long writtenMethods = parts.stream().filter(part -> part instanceof BodyPart.Method).count();
+        final long writtenConstructors = parts.stream().filter(part -> part instanceof BodyPart.Constructor
+                || part instanceof BodyPart.CompactConstructor).count();
+        if (methods.size() != writtenMethods || constructors.size() != writtenConstructors || fields != declarators) {
+            wrong.add(inClass.binaryName() + ": " + methods.size() + " of " + writtenMethods + " methods, "
+                    + constructors.size() + " of " + writtenConstructors + " constructors and " + fields + " of "
+                    + declarators + " fields are placed");
+        }
     }
 
     private JavaUnit unit(final Class<?> type) {

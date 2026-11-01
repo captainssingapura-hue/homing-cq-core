@@ -37,6 +37,7 @@ import com.homing_labs.cq.lang.java.outline.ClauseWord;
 import com.homing_labs.cq.lang.java.outline.Declarator;
 import com.homing_labs.cq.lang.java.outline.JavaOutliner;
 import com.homing_labs.cq.lang.java.outline.ModifierItem;
+import com.homing_labs.cq.lang.java.outline.NestedBody;
 import com.homing_labs.cq.lang.java.outline.Outline;
 import com.homing_labs.cq.lang.java.outline.Parameter;
 import com.homing_labs.cq.lang.java.outline.TokenRange;
@@ -85,12 +86,12 @@ import java.util.stream.Stream;
  * and a method or a constructor by the types of its parameters too, erased as the class file has them and matched by
  * the names they are written with.
  *
- * <p>The outline reads a top-level type down to the parts of its body, and no further: a member type's header is read
- * but not its body, and a method's body is left as tokens. What is written in those is placed within them, not
- * exactly. What the compiler implies or generates is written nowhere. javac puts some objects together from several
- * parts of the source: the static initialiser from every static block and every static field's initial value that is
- * no constant, and each constructor that hands over to no other runs the instance initialisers and the instance
- * fields' initial values too; all of them are its places.</p>
+ * <p>The outline reads a top-level type down to the parts of its body, and its member types' bodies so too, one level
+ * down; a type nested deeper is read down to its header, and a method's body is left as tokens. What is written in
+ * those is placed within them, not exactly. What the compiler implies or generates is written nowhere. javac puts some
+ * objects together from several parts of the source: the static initialiser from every static block and every static
+ * field's initial value that is no constant, and each constructor that hands over to no other runs the instance
+ * initialisers and the instance fields' initial values too; all of them are its places.</p>
  */
 public record SourceLocator() implements StatelessFunctionalObject {
 
@@ -108,8 +109,9 @@ public record SourceLocator() implements StatelessFunctionalObject {
     /** Where a class of the unit - its top-level class, or one nested in it - is declared in its outlined source. */
     public SourcePlace ofClass(final JavaUnit unit, final Outline outline, final ClassName name) {
         return switch (found(unit, outline, name)) {
-            case Declared declared -> new SourcePlace.Written(spans(outline, List.of(declared.declaration())));
-            case Inside inside -> new SourcePlace.Within(spans(outline, inside.ranges()));
+            case Declared declared -> new SourcePlace.Written(spans(declared.lexed(),
+                    List.of(declared.declaration())));
+            case Inside inside -> new SourcePlace.Within(inside.spans());
             case Missing _ -> SourcePlace.Unwritten.INSTANCE;
         };
     }
@@ -121,69 +123,73 @@ public record SourceLocator() implements StatelessFunctionalObject {
     public SourcePlace of(final JavaUnit unit, final Outline outline, final ClassName inClass, final ObjectKind object,
                           final Scalar value) {
         return switch (found(unit, outline, inClass)) {
-            case Declared declared -> of(unit, outline, inClass, declared, object, value);
-            case Inside inside -> new SourcePlace.Within(spans(outline, inside.ranges()));
+            case Declared declared -> of(unit, inClass, declared, object, value);
+            case Inside inside -> new SourcePlace.Within(inside.spans());
             case Missing _ -> SourcePlace.Unwritten.INSTANCE;
         };
     }
 
-    private SourcePlace of(final JavaUnit unit, final Outline outline, final ClassName inClass,
-                           final Declared declared, final ObjectKind object, final Scalar value) {
+    private SourcePlace of(final JavaUnit unit, final ClassName inClass, final Declared declared,
+                           final ObjectKind object, final Scalar value) {
+        final Lexed lexed = declared.lexed();
         final TypeHeader header = declared.header();
         return switch (object) {
             case ClassKind kind -> throw new IllegalArgumentException(kind.getClass().getSimpleName()
                     + " is a kind of class, and no object of one");
-            case ClassProperty.Visibility _ -> place(outline, words(header, "public", "protected", "private"));
-            case ClassProperty.Extensibility _ -> place(outline, extensibility(header, (Extensibility) value));
+            case ClassProperty.Visibility _ -> place(lexed, words(header, "public", "protected", "private"));
+            case ClassProperty.Extensibility _ -> place(lexed, extensibility(header, (Extensibility) value));
             case ClassAnnotation _ ->
-                    place(outline, annotations(header, ((AppliedAnnotation) value).annotation().type()));
-            case TypeParameter _ -> place(outline, header.typeParameters().items().stream()
+                    place(lexed, annotations(header, ((AppliedAnnotation) value).annotation().type()));
+            case TypeParameter _ -> place(lexed, header.typeParameters().items().stream()
                     .filter(parameter -> parameter.name().text().equals(((TypeParameterValue) value).name()))
                     .map(parameter -> parameter.range())
                     .toList());
-            case Superclass _ -> place(outline, header.superclass().stream()
-                    .filter(type -> fits(erased(outline, type.range(), 0), qualified((TypeUse) value)))
+            case Superclass _ -> place(lexed, header.superclass().stream()
+                    .filter(type -> fits(erased(lexed, type.range(), 0), qualified((TypeUse) value)))
                     .map(type -> type.range())
                     .toList());
-            case Superinterface _ -> place(outline, header.superinterfaces().stream()
-                    .filter(type -> fits(erased(outline, type.range(), 0), qualified((TypeUse) value)))
+            case Superinterface _ -> place(lexed, header.superinterfaces().stream()
+                    .filter(type -> fits(erased(lexed, type.range(), 0), qualified((TypeUse) value)))
                     .map(type -> type.range())
                     .toList());
-            case RecordComponent _ -> place(outline, header.components().stream()
+            case RecordComponent _ -> place(lexed, header.components().stream()
                     .flatMap(components -> components.items().stream())
                     .filter(component -> component.name().text().equals(((RecordComponentValue) value).name()))
                     .map(component -> component.range())
                     .toList());
             case Dependency _ -> SourcePlace.Unplaced.INSTANCE;
             case Constructor _, StaticInitialiser _, StaticField _, Field _, EnumConstant _, StaticMethod _, Method _,
-                 StaticMemberClass _, MemberClass _, LocalClass _, AnonymousClass _ -> declared.parts()
-                    .map(parts -> member(unit, outline, inClass, declared, parts, value))
-                    .orElseGet(() -> new SourcePlace.Within(spans(outline, List.of(declared.declaration()))));
+                 StaticMemberClass _, MemberClass _, LocalClass _, AnonymousClass _ -> declared.body()
+                    .map(body -> member(unit, inClass, declared, body, value))
+                    .orElseGet(() -> new SourcePlace.Within(spans(lexed, List.of(declared.declaration()))));
         };
     }
 
     /** Where a member of a class whose body's parts the outline read is written. */
-    private SourcePlace member(final JavaUnit unit, final Outline outline, final ClassName inClass,
-                               final Declared declared, final BodyParts parts, final Scalar value) {
+    private SourcePlace member(final JavaUnit unit, final ClassName inClass, final Declared declared,
+                               final Body body, final Scalar value) {
+        final Lexed lexed = body.lexed();
+        final BodyParts parts = body.parts();
         return switch (value) {
             case FieldValue field -> generated(field.origin()) ? SourcePlace.Unwritten.INSTANCE
-                    : place(outline, field(outline, parts, field.name()));
-            case EnumConstantValue constant -> place(outline, parts.of(BodyPart.EnumConstant.class).stream()
+                    : place(lexed, field(lexed, parts, field.name()));
+            case EnumConstantValue constant -> place(lexed, parts.of(BodyPart.EnumConstant.class).stream()
                     .filter(part -> part.name().text().equals(constant.name()))
-                    .map(part -> trimmed(outline, part.range(), true))
+                    .map(part -> trimmed(lexed, part.range(), true))
                     .toList());
             case MethodValue method -> generated(method.origin()) ? SourcePlace.Unwritten.INSTANCE
-                    : place(outline, ranges(matching(methods(outline, parts, method.name()),
+                    : place(lexed, ranges(matching(methods(lexed, parts, method.name()),
                     qualified(method.signature().map(MethodSignature::parameters).orElse(method.parameters())))));
             case ConstructorValue constructor -> generated(constructor.origin()) ? SourcePlace.Unwritten.INSTANCE
-                    : constructor(outline, declared, parts, constructor);
+                    : constructor(declared, body, constructor);
             case InitialiserValue initialiser -> generated(initialiser.origin()) ? SourcePlace.Unwritten.INSTANCE
-                    : place(outline, staticInitialisers(outline, declared.header(), parts, constants(unit)));
-            case NestedClass nested -> memberType(outline, inClass, parts, nested.name())
-                    .<SourcePlace>map(type -> new SourcePlace.Written(spans(outline, List.of(type.declaration()))))
+                    : place(lexed, staticInitialisers(lexed, declared.header(), parts, constants(unit, inClass)));
+            case NestedClass nested -> memberType(parts, inClass, nested.name())
+                    .<SourcePlace>map(type -> new SourcePlace.Written(spans(lexed,
+                            List.of(trimmed(lexed, type.range(), false)))))
                     .orElse(SourcePlace.Unwritten.INSTANCE);
-            case EnclosedClass enclosed -> new SourcePlace.Within(
-                    spans(outline, enclosing(unit, outline, declared, parts, enclosed.enclosure())));
+            case EnclosedClass enclosed ->
+                    new SourcePlace.Within(enclosing(unit, inClass, declared, body, enclosed.enclosure()));
             default ->
                     throw new IllegalArgumentException(value.getClass().getSimpleName() + " is no member of a class");
         };
@@ -193,45 +199,54 @@ public record SourceLocator() implements StatelessFunctionalObject {
     private Found found(final JavaUnit unit, final Outline outline, final ClassName name) {
         final ClassName top = unit.identity().name();
         if (name.equals(top)) {
+            final Lexed file = new Lexed(outline.tokens(), 0);
             return outline.types().stream()
                     .filter(type -> type.header().name().text().equals(top.simpleName()))
                     .findFirst()
-                    .<Found>map(type -> new Declared(type.header(), Optional.of(type.parts()),
-                            trimmed(outline, type.range(), false)))
+                    .<Found>map(type -> new Declared(file, type.header(), trimmed(file, type.range(), false),
+                            Optional.of(new Body(file, type.parts())), false))
                     .orElseGet(Missing::new);
         }
         return nesting(top, unit.attributes(), name)
-                .map(nesting -> nested(unit, outline, nesting, found(unit, outline, nesting.in())))
+                .map(nesting -> nested(unit, nesting, found(unit, outline, nesting.in())))
                 .orElseGet(Missing::new);
     }
 
     /** Where a class nested in another is declared, from where the other is. */
-    private Found nested(final JavaUnit unit, final Outline outline, final Nesting nesting, final Found in) {
+    private Found nested(final JavaUnit unit, final Nesting nesting, final Found in) {
         return switch (in) {
-            case Declared declared when declared.parts().isPresent() -> switch (nesting.value()) {
-                case NestedClass nested -> {
-                    final Optional<Declared> type = memberType(outline, nesting.in(), declared.parts().get(),
-                            nested.name());
-                    yield type.isPresent() ? type.get() : new Missing();
-                }
-                case EnclosedClass enclosed ->
-                        new Inside(enclosing(unit, outline, declared, declared.parts().get(), enclosed.enclosure()));
-                default -> new Missing();
-            };
-            case Declared declared -> new Inside(List.of(declared.declaration()));
+            case Declared declared when declared.body().isPresent() -> {
+                final Body body = declared.body().get();
+                yield switch (nesting.value()) {
+                    case NestedClass nested -> {
+                        final Optional<BodyPart.TypeDeclaration> type = memberType(body.parts(), nesting.in(),
+                                nested.name());
+                        yield type.isEmpty() ? new Missing() : new Declared(body.lexed(), type.get().header(),
+                                trimmed(body.lexed(), type.get().range(), false),
+                                type.get().nested().map(read -> new Body(lexed(read), read.parts())),
+                                nesting.object() instanceof MemberClass);
+                    }
+                    case EnclosedClass enclosed ->
+                            new Inside(enclosing(unit, nesting.in(), declared, body, enclosed.enclosure()));
+                    default -> new Missing();
+                };
+            }
+            case Declared declared -> new Inside(spans(declared.lexed(), List.of(declared.declaration())));
             case Inside inside -> inside;
             case Missing missing -> missing;
         };
     }
 
-    /** The class of the unit a class is nested in, and the value that holds it there. */
+    /** The class of the unit a class is nested in, the object it is there, and the value that holds it. */
     private Optional<Nesting> nesting(final ClassName in, final Attributes attributes, final ClassName name) {
         for (final Entry entry : attributes.entries()) {
             for (final WithSource<? extends Scalar> held : entry.all()) {
                 final Optional<Nesting> found = switch (held.object()) {
-                    case NestedClass nested -> nested.name().equals(name) ? Optional.of(new Nesting(in, nested))
+                    case NestedClass nested -> nested.name().equals(name)
+                            ? Optional.of(new Nesting(in, entry.object(), nested))
                             : nesting(nested.name(), nested.attributes(), name);
-                    case EnclosedClass enclosed -> enclosed.name().equals(name) ? Optional.of(new Nesting(in, enclosed))
+                    case EnclosedClass enclosed -> enclosed.name().equals(name)
+                            ? Optional.of(new Nesting(in, entry.object(), enclosed))
                             : nesting(enclosed.name(), enclosed.attributes(), name);
                     default -> Optional.empty();
                 };
@@ -243,47 +258,48 @@ public record SourceLocator() implements StatelessFunctionalObject {
         return Optional.empty();
     }
 
-    /** A member type of a class, as the class's body declares it: its header is read, but not its body. */
-    private Optional<Declared> memberType(final Outline outline, final ClassName inClass, final BodyParts parts,
-                                          final ClassName name) {
+    /** A member type of a class, as the class's body declares it. */
+    private Optional<BodyPart.TypeDeclaration> memberType(final BodyParts parts, final ClassName inClass,
+                                                          final ClassName name) {
         final String simpleName = name.binaryName().substring(inClass.binaryName().length() + 1);
         return parts.of(BodyPart.TypeDeclaration.class).stream()
                 .filter(type -> type.header().name().text().equals(simpleName))
-                .findFirst()
-                .map(type -> new Declared(type.header(), Optional.empty(), trimmed(outline, type.range(), false)));
+                .findFirst();
     }
 
     /**
      * Where a local or an anonymous class is declared: in the method, the constructor or the initialisers whose code
      * declares it, or, when none of those is found, anywhere in the class.
      */
-    private List<TokenRange> enclosing(final JavaUnit unit, final Outline outline, final Declared declared,
-                                       final BodyParts parts, final Enclosure enclosure) {
+    private SourceSpans enclosing(final JavaUnit unit, final ClassName inClass, final Declared declared,
+                                  final Body body, final Enclosure enclosure) {
+        final Lexed lexed = body.lexed();
         final List<TokenRange> found = switch (enclosure) {
             case Enclosure.InMethod method when method.name().startsWith(LAMBDA) ->
-                    inLambda(unit, outline, declared.header(), parts, method.name());
+                    inLambda(unit, inClass, declared, body, method.name());
             case Enclosure.InMethod method ->
-                    ranges(resembling(methods(outline, parts, method.name()), qualified(method.parameters())));
-            case Enclosure.InConstructor constructor -> ranges(resembling(
-                    constructors(outline, declared.header(), parts),
-                    writtenParameters(declared.header(), constructor.parameters())));
-            case Enclosure.InInitialiser _ -> initialisers(outline, parts);
+                    ranges(resembling(methods(lexed, body.parts(), method.name()), qualified(method.parameters())));
+            case Enclosure.InConstructor constructor -> ranges(resembling(constructors(declared, body),
+                    writtenParameters(declared, constructor.parameters())));
+            case Enclosure.InInitialiser _ -> initialisers(lexed, body.parts());
         };
-        return found.isEmpty() ? List.of(declared.declaration()) : found;
+        return found.isEmpty() ? spans(declared.lexed(), List.of(declared.declaration())) : spans(lexed, found);
     }
 
     /**
      * Where javac's method for a lambda was written: {@code lambda$name$0} is in the method of that name,
      * {@code lambda$new$0} in a constructor or an instance initialiser, {@code lambda$static$0} in a static one.
      */
-    private List<TokenRange> inLambda(final JavaUnit unit, final Outline outline, final TypeHeader header,
-                                      final BodyParts parts, final String name) {
+    private List<TokenRange> inLambda(final JavaUnit unit, final ClassName inClass, final Declared declared,
+                                      final Body body, final String name) {
+        final Lexed lexed = body.lexed();
+        final TypeHeader header = declared.header();
         final String in = name.substring(LAMBDA.length(), Math.max(LAMBDA.length(), name.lastIndexOf('$')));
         return switch (in) {
-            case "new" -> Stream.concat(ranges(constructors(outline, header, parts)).stream(),
-                    instanceInitialisers(outline, header, parts).stream()).toList();
-            case "static" -> staticInitialisers(outline, header, parts, constants(unit));
-            default -> ranges(methods(outline, parts, in));
+            case "new" -> Stream.concat(ranges(constructors(declared, body)).stream(),
+                    instanceInitialisers(lexed, header, body.parts()).stream()).toList();
+            case "static" -> staticInitialisers(lexed, header, body.parts(), constants(unit, inClass));
+            default -> ranges(methods(lexed, body.parts(), in));
         };
     }
 
@@ -291,11 +307,11 @@ public record SourceLocator() implements StatelessFunctionalObject {
      * The field of a body with the name: its declaration, or, when the declaration declares more than one, its
      * modifiers and type, and the field's own declarator.
      */
-    private List<TokenRange> field(final Outline outline, final BodyParts parts, final String name) {
+    private List<TokenRange> field(final Lexed lexed, final BodyParts parts, final String name) {
         for (final BodyPart.Field field : parts.of(BodyPart.Field.class)) {
             for (final Declarator declarator : field.declarators().items()) {
                 if (declarator.name().text().equals(name)) {
-                    return field.declarators().items().size() == 1 ? List.of(trimmed(outline, field.range(), false))
+                    return field.declarators().items().size() == 1 ? List.of(trimmed(lexed, field.range(), false))
                             : List.of(new TokenRange(field.range().from(), field.type().range().to()),
                             declarator.range());
                 }
@@ -305,47 +321,56 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /** Where a constructor is written: itself, and, unless it hands over to another, the instance initialisers. */
-    private SourcePlace constructor(final Outline outline, final Declared declared, final BodyParts parts,
-                                    final ConstructorValue constructor) {
-        final List<Candidate> found = matching(constructors(outline, declared.header(), parts),
+    private SourcePlace constructor(final Declared declared, final Body body, final ConstructorValue constructor) {
+        final Lexed lexed = body.lexed();
+        final List<Candidate> found = matching(constructors(declared, body),
                 constructor.signature().map(ConstructorSignature::parameters).map(this::qualified)
-                        .orElseGet(() -> writtenParameters(declared.header(), constructor.parameters())));
+                        .orElseGet(() -> writtenParameters(declared, constructor.parameters())));
         final List<TokenRange> ranges = new ArrayList<>(ranges(found));
-        if (found.stream().anyMatch(candidate -> !delegates(outline, candidate))) {
-            ranges.addAll(instanceInitialisers(outline, declared.header(), parts));
+        if (found.stream().anyMatch(candidate -> !delegates(lexed, candidate))) {
+            ranges.addAll(instanceInitialisers(lexed, declared.header(), body.parts()));
         }
-        return place(outline, ranges);
+        return place(lexed, ranges);
     }
 
     /** The methods of a body with the name, each with its parameters' types as written. */
-    private List<Candidate> methods(final Outline outline, final BodyParts parts, final String name) {
+    private List<Candidate> methods(final Lexed lexed, final BodyParts parts, final String name) {
         return parts.of(BodyPart.Method.class).stream()
                 .filter(method -> method.name().text().equals(name))
-                .map(method -> new Candidate(trimmed(outline, method.range(), false),
-                        writtenTypes(outline, method.parameters().formal()), method.body()))
+                .map(method -> new Candidate(trimmed(lexed, method.range(), false),
+                        writtenTypes(lexed, method.parameters().formal()), method.body()))
                 .toList();
     }
 
     /** The constructors of a body - a record's compact one taking its components - each with its parameters' types. */
-    private List<Candidate> constructors(final Outline outline, final TypeHeader header, final BodyParts parts) {
+    private List<Candidate> constructors(final Declared declared, final Body body) {
+        final Lexed lexed = body.lexed();
         final List<Candidate> found = new ArrayList<>();
-        for (final BodyPart part : parts.items()) {
+        for (final BodyPart part : body.parts().items()) {
             switch (part) {
                 case BodyPart.Constructor constructor -> found.add(new Candidate(
-                        trimmed(outline, constructor.range(), false),
-                        writtenTypes(outline, constructor.parameters().formal()), constructor.body()));
+                        trimmed(lexed, constructor.range(), false),
+                        writtenTypes(lexed, constructor.parameters().formal()), constructor.body()));
                 case BodyPart.CompactConstructor compact -> found.add(new Candidate(
-                        trimmed(outline, compact.range(), false),
-                        header.components().stream().flatMap(components -> components.items().stream())
-                                .map(component -> erased(outline, component.type().range(),
-                                        component.variable() ? 1 : 0))
-                                .toList(),
+                        trimmed(lexed, compact.range(), false),
+                        components(declared),
                         Optional.empty()));
                 default -> {
                 }
             }
         }
         return found;
+    }
+
+    /**
+     * The types of a record's components as written, in the tokens its header was read from: a member record's are the
+     * body's that declares it, not its own body's.
+     */
+    private List<String> components(final Declared declared) {
+        return declared.header().components().stream()
+                .flatMap(components -> components.items().stream())
+                .map(component -> erased(declared.lexed(), component.type().range(), component.variable() ? 1 : 0))
+                .toList();
     }
 
     /**
@@ -421,19 +446,20 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /** Whether a constructor hands over to another of its class with {@code this(...)}, which runs the initialisers. */
-    private boolean delegates(final Outline outline, final Candidate candidate) {
+    private boolean delegates(final Lexed lexed, final Candidate candidate) {
+        final TokenStream tokens = lexed.tokens();
         final TokenRange body = candidate.body().orElse(new TokenRange(0, 0));
         int depth = 0;
         for (int at = body.from(); at < body.to(); at++) {
-            final Token token = outline.tokens().get(at);
+            final Token token = tokens.get(at);
             if (comment(token)) {
                 continue;
             }
-            switch (outline.tokens().text(token)) {
+            switch (tokens.text(token)) {
                 case "{" -> depth++;
                 case "}" -> depth--;
                 case "this" -> {
-                    if (depth == 1 && next(outline.tokens(), at, body.to()).equals("(")) {
+                    if (depth == 1 && next(tokens, at, body.to()).equals("(")) {
                         return true;
                     }
                 }
@@ -445,13 +471,12 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /** The instance initialisers, and the instance fields' initial values, in the order written. */
-    private List<TokenRange> instanceInitialisers(final Outline outline, final TypeHeader header,
-                                                  final BodyParts parts) {
+    private List<TokenRange> instanceInitialisers(final Lexed lexed, final TypeHeader header, final BodyParts parts) {
         final List<TokenRange> found = new ArrayList<>();
         for (final BodyPart part : parts.items()) {
             switch (part) {
                 case BodyPart.Initializer initializer when !initializer.isStatic() ->
-                        found.add(trimmed(outline, initializer.range(), false));
+                        found.add(trimmed(lexed, initializer.range(), false));
                 case BodyPart.Field field when !isStatic(header, field) -> field.declarators().items().stream()
                         .filter(declarator -> declarator.initializer().isPresent())
                         .forEach(declarator -> found.add(declarator.range()));
@@ -466,14 +491,14 @@ public record SourceLocator() implements StatelessFunctionalObject {
      * What javac puts the static initialiser together from, in the order written: an enum's constants, the static
      * blocks, and the static fields' initial values, but for the constants'.
      */
-    private List<TokenRange> staticInitialisers(final Outline outline, final TypeHeader header,
-                                                final BodyParts parts, final Set<String> constants) {
+    private List<TokenRange> staticInitialisers(final Lexed lexed, final TypeHeader header, final BodyParts parts,
+                                                final Set<String> constants) {
         final List<TokenRange> found = new ArrayList<>();
         for (final BodyPart part : parts.items()) {
             switch (part) {
-                case BodyPart.EnumConstant constant -> found.add(trimmed(outline, constant.range(), true));
+                case BodyPart.EnumConstant constant -> found.add(trimmed(lexed, constant.range(), true));
                 case BodyPart.Initializer initializer when initializer.isStatic() ->
-                        found.add(trimmed(outline, initializer.range(), false));
+                        found.add(trimmed(lexed, initializer.range(), false));
                 case BodyPart.Field field when isStatic(header, field) -> field.declarators().items().stream()
                         .filter(declarator -> declarator.initializer().isPresent()
                                 && !constants.contains(declarator.name().text()))
@@ -486,14 +511,14 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /**
-     * The fields of the unit's top-level class that are constants (JLS 4.12.4): the class file holds their values, and
-     * no initialiser computes them. Only the class file can say which they are - the names in a value's expression
-     * may be any field's - so it is read again for them, through the class's loader.
+     * The fields of a class of the unit that are constants (JLS 4.12.4): the class file holds their values, and no
+     * initialiser computes them. Only the class file can say which they are - the names in a value's expression may be
+     * any field's - so it is read again for them, through the loader of the unit's class.
      */
-    private Set<String> constants(final JavaUnit unit) {
+    private Set<String> constants(final JavaUnit unit, final ClassName inClass) {
         final ClassLoader loader = Optional.ofNullable(unit.type().getClassLoader())
                 .orElseGet(ClassLoader::getSystemClassLoader);
-        final String classFile = unit.type().getName().replace('.', '/') + ".class";
+        final String classFile = inClass.binaryName().replace('.', '/') + ".class";
         try (InputStream in = loader.getResourceAsStream(classFile)) {
             if (in == null) {
                 return Set.of();
@@ -508,13 +533,13 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /** Every initialiser, every field's initial value, and every enum constant made with arguments or a body. */
-    private List<TokenRange> initialisers(final Outline outline, final BodyParts parts) {
+    private List<TokenRange> initialisers(final Lexed lexed, final BodyParts parts) {
         final List<TokenRange> found = new ArrayList<>();
         for (final BodyPart part : parts.items()) {
             switch (part) {
                 case BodyPart.EnumConstant constant when constant.arguments().isPresent()
-                        || constant.body().isPresent() -> found.add(trimmed(outline, constant.range(), true));
-                case BodyPart.Initializer initializer -> found.add(trimmed(outline, initializer.range(), false));
+                        || constant.body().isPresent() -> found.add(trimmed(lexed, constant.range(), true));
+                case BodyPart.Initializer initializer -> found.add(trimmed(lexed, initializer.range(), false));
                 case BodyPart.Field field -> field.declarators().items().stream()
                         .filter(declarator -> declarator.initializer().isPresent())
                         .forEach(declarator -> found.add(declarator.range()));
@@ -563,17 +588,21 @@ public record SourceLocator() implements StatelessFunctionalObject {
                 .toList();
     }
 
-    /** The types of the parameters a constructor is written with: an enum's take its name and ordinal first. */
-    private List<String> writtenParameters(final TypeHeader header, final Parameters parameters) {
+    /**
+     * The types of the parameters a constructor is written with: javac gives an enum's its name and ordinal first, and
+     * an inner class's the object of its enclosing class.
+     */
+    private List<String> writtenParameters(final Declared declared, final Parameters parameters) {
         final List<String> all = qualified(parameters);
-        return header.keyword() instanceof TypeKeyword.Enum && all.size() >= 2 ? all.subList(2, all.size()) : all;
+        final int added = declared.header().keyword() instanceof TypeKeyword.Enum ? 2 : declared.inner() ? 1 : 0;
+        return all.size() >= added ? all.subList(added, all.size()) : all;
     }
 
     /** The types of formal parameters as written, each erased to its names and its dimensions. */
-    private List<String> writtenTypes(final Outline outline, final List<Parameter.Formal> parameters) {
+    private List<String> writtenTypes(final Lexed lexed, final List<Parameter.Formal> parameters) {
         return parameters.stream()
-                .map(parameter -> erased(outline, parameter.type().range(),
-                        brackets(outline, parameter.dimensions()) + (parameter.variable() ? 1 : 0)))
+                .map(parameter -> erased(lexed, parameter.type().range(),
+                        brackets(lexed, parameter.dimensions()) + (parameter.variable() ? 1 : 0)))
                 .toList();
     }
 
@@ -581,8 +610,8 @@ public record SourceLocator() implements StatelessFunctionalObject {
      * A type as written, erased to the names it is written with and its dimensions: {@code java.util.Map.Entry[]} for
      * {@code java.util.Map.@A Entry<K, V>[]}. A type variable stays as it is named.
      */
-    private String erased(final Outline outline, final TokenRange type, final int dimensions) {
-        final TokenStream tokens = outline.tokens();
+    private String erased(final Lexed lexed, final TokenRange type, final int dimensions) {
+        final TokenStream tokens = lexed.tokens();
         final StringBuilder name = new StringBuilder();
         int brackets = dimensions;
         int depth = 0;
@@ -635,10 +664,10 @@ public record SourceLocator() implements StatelessFunctionalObject {
         return past;
     }
 
-    private int brackets(final Outline outline, final TokenRange range) {
+    private int brackets(final Lexed lexed, final TokenRange range) {
         int brackets = 0;
         for (int at = range.from(); at < range.to(); at++) {
-            if (outline.tokens().text(outline.tokens().get(at)).equals("[")) {
+            if (lexed.tokens().text(lexed.tokens().get(at)).equals("[")) {
                 brackets++;
             }
         }
@@ -706,11 +735,11 @@ public record SourceLocator() implements StatelessFunctionalObject {
      * A part's tokens without the comments after it, which its range takes in up to the next part's start - and, for
      * an enum constant, without the comma or the semicolon after it.
      */
-    private TokenRange trimmed(final Outline outline, final TokenRange range, final boolean separated) {
+    private TokenRange trimmed(final Lexed lexed, final TokenRange range, final boolean separated) {
         int to = range.to();
         while (to > range.from()) {
-            final Token last = outline.tokens().get(to - 1);
-            final String text = outline.tokens().text(last);
+            final Token last = lexed.tokens().get(to - 1);
+            final String text = lexed.tokens().text(last);
             if (!(comment(last) || separated && (text.equals(",") || text.equals(";")))) {
                 break;
             }
@@ -720,20 +749,25 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /** Written in the ranges, or nowhere when there are none. */
-    private SourcePlace place(final Outline outline, final List<TokenRange> ranges) {
-        final SourceSpans spans = spans(outline, ranges);
+    private SourcePlace place(final Lexed lexed, final List<TokenRange> ranges) {
+        final SourceSpans spans = spans(lexed, ranges);
         return spans.items().isEmpty() ? SourcePlace.Unwritten.INSTANCE : new SourcePlace.Written(spans);
     }
 
-    /** The text the ranges of tokens are written in, in the order written. */
-    private SourceSpans spans(final Outline outline, final List<TokenRange> ranges) {
+    /** The text of the file the ranges of tokens are written in, in the order written. */
+    private SourceSpans spans(final Lexed lexed, final List<TokenRange> ranges) {
         return new SourceSpans(ranges.stream()
                 .filter(range -> !range.isEmpty())
                 .sorted(Comparator.comparingInt(TokenRange::from))
-                .map(range -> new SourceSpan(outline.tokens().get(range.from()).start(),
-                        outline.tokens().get(range.to() - 1).end()))
+                .map(range -> new SourceSpan(lexed.offset() + lexed.tokens().get(range.from()).start(),
+                        lexed.offset() + lexed.tokens().get(range.to() - 1).end()))
                 .distinct()
                 .toList());
+    }
+
+    /** The tokens a member type's body was read into, at its block's offset in the file. */
+    private Lexed lexed(final NestedBody body) {
+        return new Lexed(body.tokens(), body.block().offset());
     }
 
     private String fileName(final JavaSource source) {
@@ -741,24 +775,39 @@ public record SourceLocator() implements StatelessFunctionalObject {
         return path.substring(path.lastIndexOf('/') + 1);
     }
 
+    /**
+     * Tokens a class's parts were read from, and where they start in the file: the file's own, from its first
+     * character, or a member type's body's, lexed on its own from a block copied out of the file.
+     */
+    private record Lexed(TokenStream tokens, int offset) {
+    }
+
+    /** A body's parts, in the tokens they were read from. */
+    private record Body(Lexed lexed, BodyParts parts) {
+    }
+
     /** Where a class of the unit is declared, as far as the outline read the source. */
     private sealed interface Found {
     }
 
-    /** Declared there, with its header read, and its body's parts when the outline read those too. */
-    private record Declared(TypeHeader header, Optional<BodyParts> parts, TokenRange declaration) implements Found {
+    /**
+     * Declared there, in the tokens the header was read from: with its header, and its body's parts when the outline
+     * read those too; and whether it is an inner class, whose constructors javac gives its enclosing object first.
+     */
+    private record Declared(Lexed lexed, TypeHeader header, TokenRange declaration, Optional<Body> body,
+                            boolean inner) implements Found {
     }
 
     /** Declared somewhere inside these, in tokens the outline left unread. */
-    private record Inside(List<TokenRange> ranges) implements Found {
+    private record Inside(SourceSpans spans) implements Found {
     }
 
     /** Declared nowhere in the source. */
     private record Missing() implements Found {
     }
 
-    /** The class a class is nested in, and the value that holds it there: a nested or an enclosed class. */
-    private record Nesting(ClassName in, Scalar value) {
+    /** The class a class is nested in, the object it is there, and the value that holds it: nested or enclosed. */
+    private record Nesting(ClassName in, ObjectKind object, Scalar value) {
     }
 
     /** A method or a constructor as written: where, its parameters' types erased to the names written, and its body. */
