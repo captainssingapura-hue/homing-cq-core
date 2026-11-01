@@ -2,6 +2,7 @@ package com.homing_labs.cq.demo;
 
 import com.homing_labs.cq.core.def.lang.JavaLang;
 import com.homing_labs.cq.core.principle.def.Principle;
+import com.homing_labs.cq.demo.enforce.MethodsWithin50LinesEnforcer;
 import com.homing_labs.cq.demo.enforce.NoPublicFieldsEnforcer;
 import com.homing_labs.cq.demo.enforce.NoStaticMethodsEnforcer;
 import com.homing_labs.cq.demo.enforce.NoStaticMutableVariablesEnforcer;
@@ -23,7 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The framework's own modules, and this demo's, checked against the demo rules from outside - as a qc module checks
- * the code it depends on, which knows nothing of the check.
+ * the code it depends on, which knows nothing of the check. Of the size rules, only the one on methods so far: some
+ * classes are still longer than the other allows.
  */
 class TheFrameworkHoldsToTheDemoRulesTest {
 
@@ -40,9 +42,12 @@ class TheFrameworkHoldsToTheDemoRulesTest {
         for (final Class<?> anchor : anchors) {
             final List<JavaUnit> units = JavaUnitReader.INSTANCE.read(anchor);
             assertTrue(units.size() > 0, "no units read for the module of " + anchor.getName());
+            assertEquals(List.of(), units.stream().filter(unit -> unit.source().isEmpty()).toList(),
+                    "a source rule checks nothing of a unit without its source");
             found.addAll(DemoFindings.INSTANCE.of(NoStaticMethodsEnforcer.INSTANCE, units).values());
             found.addAll(DemoFindings.INSTANCE.of(NoStaticMutableVariablesEnforcer.INSTANCE, units).values());
             found.addAll(DemoFindings.INSTANCE.of(NoPublicFieldsEnforcer.INSTANCE, units).values());
+            found.addAll(DemoFindings.INSTANCE.of(MethodsWithin50LinesEnforcer.INSTANCE, units).values());
         }
         assertEquals(List.of(), found);
     }
