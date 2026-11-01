@@ -128,11 +128,34 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
         return new WithSource<>(initialisation, new ProcessedSource.Unavailable<>());
     }
 
+    /** A class from its class file, and its nested classes from theirs. */
     private Read read(final ClassLoader loader, final String internalName) {
         final byte[] classFile = bytes(loader, internalName);
         final ClassModel parsed = ClassFile.of().parse(classFile);
         final ClassKind kind = ClassScanner.INSTANCE.kindOf(parsed);
         final Map<ObjectKind, List<WithSource<? extends Scalar>>> found = new LinkedHashMap<>();
+        header(found, parsed, kind);
+        fields(found, parsed);
+        if (kind instanceof ClassKind.Record) {
+            components(found, parsed);
+        }
+        methods(found, parsed);
+        nestedClasses(found, loader, parsed, internalName);
+        for (final Occurrence occurrence : ClassScanner.INSTANCE.scan(classFile)) {
+            if (occurrence instanceof Occurrence.OfMember member && member.kind() instanceof Dependency) {
+                add(found, member.kind(), name(member.name()));
+            }
+        }
+        try {
+            return new Read(Entries.INSTANCE.of(kind, found), initialisation(parsed));
+        } catch (final IllegalArgumentException e) {
+            throw new IllegalArgumentException(name(internalName).binaryName() + ": " + e.getMessage(), e);
+        }
+    }
+
+    /** What the class's header declares: its visibility and extensibility, annotations, type parameters, supertypes. */
+    private void header(final Map<ObjectKind, List<WithSource<? extends Scalar>>> found, final ClassModel parsed,
+                        final ClassKind kind) {
         final Set<AccessFlag> classFlags = ClassScanner.INSTANCE.classFlagsOf(parsed);
         add(found, ClassProperty.Visibility.INSTANCE, visibility(classFlags));
         add(found, ClassProperty.Extensibility.INSTANCE,
@@ -153,6 +176,10 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
                 .orElseGet(() -> parsed.interfaces().stream()
                         .<TypeUse>map(superinterface -> new TypeUse.Named(name(superinterface))).toList())
                 .forEach(superinterface -> add(found, Superinterface.INSTANCE, superinterface));
+    }
+
+    /** The class's fields, its enum constants among them. */
+    private void fields(final Map<ObjectKind, List<WithSource<? extends Scalar>>> found, final ClassModel parsed) {
         for (final FieldModel field : parsed.fields()) {
             final Set<AccessFlag> flags = field.flags().flags();
             final ObjectKind fieldKind = ClassScanner.INSTANCE.fieldKindOf(field);
@@ -167,12 +194,19 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
                             : Persistence.Persistent.INSTANCE,
                     origin(flags), annotations(field)));
         }
-        if (kind instanceof ClassKind.Record) {
-            parsed.findAttribute(java.lang.classfile.Attributes.record()).orElseThrow().components()
-                    .forEach(component -> add(found, RecordComponent.INSTANCE, new RecordComponentValue(
-                            component.name().stringValue(), typeUse(component.descriptorSymbol()),
-                            declaredType(component), annotations(component))));
-        }
+    }
+
+    /** A record's components, from its Record attribute. */
+    private void components(final Map<ObjectKind, List<WithSource<? extends Scalar>>> found,
+                            final ClassModel parsed) {
+        parsed.findAttribute(java.lang.classfile.Attributes.record()).orElseThrow().components()
+                .forEach(component -> add(found, RecordComponent.INSTANCE, new RecordComponentValue(
+                        component.name().stringValue(), typeUse(component.descriptorSymbol()),
+                        declaredType(component), annotations(component))));
+    }
+
+    /** The class's constructors and methods; its static initialiser is no part of it. */
+    private void methods(final Map<ObjectKind, List<WithSource<? extends Scalar>>> found, final ClassModel parsed) {
         for (final MethodModel method : parsed.methods()) {
             final Set<AccessFlag> flags = method.flags().flags();
             final Parameters parameters = new Parameters(
@@ -199,6 +233,15 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
                                 .map(declared -> value(declared.defaultValue()))));
             }
         }
+    }
+
+    /**
+     * The classes nested in the class, each read from its own class file: its member classes, and the local and
+     * anonymous classes its code declares. A deeper class its InnerClasses attribute lists is left to the class it
+     * belongs to.
+     */
+    private void nestedClasses(final Map<ObjectKind, List<WithSource<? extends Scalar>>> found,
+                               final ClassLoader loader, final ClassModel parsed, final String internalName) {
         for (final InnerClassInfo member : ClassScanner.INSTANCE.memberClasses(parsed)) {
             final String memberName = member.innerClass().asInternalName();
             final Read read = read(loader, memberName);
@@ -213,16 +256,6 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
                 add(found, ClassScanner.INSTANCE.codeClassKindOf(declared).orElseThrow(), new EnclosedClass(
                         name(candidateName), enclosure(declared), read.attributes(), read.initialisation()));
             }
-        }
-        for (final Occurrence occurrence : ClassScanner.INSTANCE.scan(classFile)) {
-            if (occurrence instanceof Occurrence.OfMember member && member.kind() instanceof Dependency) {
-                add(found, member.kind(), name(member.name()));
-            }
-        }
-        try {
-            return new Read(Entries.INSTANCE.of(kind, found), initialisation(parsed));
-        } catch (final IllegalArgumentException e) {
-            throw new IllegalArgumentException(name(internalName).binaryName() + ": " + e.getMessage(), e);
         }
     }
 

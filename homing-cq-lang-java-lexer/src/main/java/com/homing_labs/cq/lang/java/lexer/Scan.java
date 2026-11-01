@@ -125,52 +125,9 @@ final class Scan implements Mutable {
     private void number(final int start) {
         final boolean hexadecimal = cursor.peek() == '0' && (cursor.peek(1) == 'x' || cursor.peek(1) == 'X');
         final boolean binary = cursor.peek() == '0' && (cursor.peek(1) == 'b' || cursor.peek(1) == 'B');
-        boolean floating = false;
-        if (hexadecimal) {
-            cursor.advance(2);
-            boolean any = digits(HEXADECIMAL, true);
-            if (cursor.peek() == '.') {
-                cursor.advance();
-                floating = true;
-                any |= digits(HEXADECIMAL, true);
-            }
-            if (!any) {
-                error(start, cursor.mark(), "hexadecimal numbers must contain at least one hexadecimal digit");
-            }
-            if (cursor.peek() == 'p' || cursor.peek() == 'P') {
-                floating = true;
-                exponent(start);
-            } else if (floating) {
-                error(start, cursor.mark(), "malformed floating-point literal");
-            }
-        } else if (binary) {
-            cursor.advance(2);
-            if (!digits(BINARY, true)) {
-                error(start, cursor.mark(), "binary numbers must contain at least one binary digit");
-            }
-        } else {
-            digits(DECIMAL, false);
-            if (cursor.peek() == '.') {
-                cursor.advance();
-                floating = true;
-                digits(DECIMAL, true);
-            }
-            if (cursor.peek() == 'e' || cursor.peek() == 'E') {
-                floating = true;
-                exponent(start);
-            }
-        }
-        final int suffix = cursor.peek();
-        if (suffix == 'l' || suffix == 'L') {
-            cursor.advance();
-            if (floating) {
-                error(start, cursor.mark(), "malformed floating-point literal");
-            }
-        } else if ((suffix == 'f' || suffix == 'F' || suffix == 'd' || suffix == 'D') && !binary
-                && (!hexadecimal || floating)) {
-            cursor.advance();
-            floating = true;
-        }
+        final boolean pointed = hexadecimal ? hexadecimalNumber(start)
+                : binary ? binaryNumber(start) : decimalNumber(start);
+        final boolean floating = suffix(start, hexadecimal, binary, pointed);
         if (!cursor.atEnd() && Character.isJavaIdentifierPart(cursor.codePoint())) {
             while (!cursor.atEnd() && Character.isJavaIdentifierPart(cursor.codePoint())) {
                 cursor.advanceCodePoint();
@@ -178,6 +135,78 @@ final class Scan implements Mutable {
             error(start, cursor.mark(), "malformed number");
         }
         emit(floating ? TokenKind.FloatingPointLiteral.INSTANCE : TokenKind.IntegerLiteral.INSTANCE, start);
+    }
+
+    /**
+     * A hexadecimal number's prefix, digits, point and binary exponent; whether they make it a floating-point one. A
+     * point needs the exponent.
+     */
+    private boolean hexadecimalNumber(final int start) {
+        cursor.advance(2);
+        boolean floating = false;
+        boolean any = digits(HEXADECIMAL, true);
+        if (cursor.peek() == '.') {
+            cursor.advance();
+            floating = true;
+            any |= digits(HEXADECIMAL, true);
+        }
+        if (!any) {
+            error(start, cursor.mark(), "hexadecimal numbers must contain at least one hexadecimal digit");
+        }
+        if (cursor.peek() == 'p' || cursor.peek() == 'P') {
+            floating = true;
+            exponent(start);
+        } else if (floating) {
+            error(start, cursor.mark(), "malformed floating-point literal");
+        }
+        return floating;
+    }
+
+    /** A binary number's prefix and digits, which never make it a floating-point one. */
+    private boolean binaryNumber(final int start) {
+        cursor.advance(2);
+        if (!digits(BINARY, true)) {
+            error(start, cursor.mark(), "binary numbers must contain at least one binary digit");
+        }
+        return false;
+    }
+
+    /** A decimal number's digits, point and exponent; whether they make it a floating-point one. */
+    private boolean decimalNumber(final int start) {
+        boolean floating = false;
+        digits(DECIMAL, false);
+        if (cursor.peek() == '.') {
+            cursor.advance();
+            floating = true;
+            digits(DECIMAL, true);
+        }
+        if (cursor.peek() == 'e' || cursor.peek() == 'E') {
+            floating = true;
+            exponent(start);
+        }
+        return floating;
+    }
+
+    /**
+     * A number's suffix, where it may have one; whether the number, its digits floating-point or not, is a
+     * floating-point one with it. A hexadecimal number takes {@code f} or {@code d} as a suffix only once it is a
+     * floating-point one; before, they are digits.
+     */
+    private boolean suffix(final int start, final boolean hexadecimal, final boolean binary, final boolean floating) {
+        final int suffix = cursor.peek();
+        if (suffix == 'l' || suffix == 'L') {
+            cursor.advance();
+            if (floating) {
+                error(start, cursor.mark(), "malformed floating-point literal");
+            }
+            return floating;
+        }
+        if ((suffix == 'f' || suffix == 'F' || suffix == 'd' || suffix == 'D') && !binary
+                && (!hexadecimal || floating)) {
+            cursor.advance();
+            return true;
+        }
+        return floating;
     }
 
     /**

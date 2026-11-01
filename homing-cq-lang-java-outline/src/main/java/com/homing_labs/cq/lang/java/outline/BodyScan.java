@@ -407,44 +407,12 @@ final class BodyScan extends TokenScan {
         final List<Parameter> parameters = new ArrayList<>();
         advance();
         while (at < size() && !is(")")) {
-            final int start = at;
-            final List<ModifierItem> modifiers = modifiers();
-            TypeText parameterType = type();
-            if (parameterType.range().isEmpty()) {
+            final Optional<Parameter> parameter = parameter(parameters.isEmpty());
+            if (parameter.isEmpty()) {
                 closeParameters();
                 return parameters;
             }
-            final boolean variable = is(pastAnnotations(at), "...");
-            if (variable) {
-                while (is("@")) {
-                    annotation();
-                }
-                parameterType = new TypeText(new TokenRange(parameterType.range().from(), last + 1));
-                advance();
-            }
-            if (is("this") || identifier(at) && is(next(at), ".") && is(next(next(at)), "this")) {
-                annotationsOnly(modifiers);
-                if (!parameters.isEmpty()) {
-                    error("'this' names the receiver parameter only, which comes first", at, at + 1);
-                }
-                final int nameStart = at;
-                final StringBuilder text = new StringBuilder();
-                while (!is("this")) {
-                    text.append(text(at));
-                    advance();
-                }
-                advance();
-                parameters.add(new Parameter.Receiver(new Modifiers(modifiers), parameterType,
-                        new Name(text.append("this").toString(), new TokenRange(nameStart, last + 1)),
-                        new TokenRange(start, last + 1)));
-            } else {
-                final Name name = memberName();
-                final TokenRange dimensions = dimensions();
-                final Modifiers written = new Modifiers(modifiers);
-                checkModifiers(written, Set.of("final"), false, new TokenRange(start, last + 1));
-                parameters.add(new Parameter.Formal(written, parameterType, variable, name, dimensions,
-                        new TokenRange(start, last + 1)));
-            }
+            parameters.add(parameter.get());
             if (is(",")) {
                 advance();
             } else if (!is(")")) {
@@ -458,13 +426,64 @@ final class BodyScan extends TokenScan {
         } else {
             error("')' expected", at, Math.min(at + 1, size()));
         }
+        checkVariableArity(parameters);
+        return parameters;
+    }
+
+    /** One parameter, the receiver or a formal one; none, when no type is written where its type would be. */
+    private Optional<Parameter> parameter(final boolean first) {
+        final int start = at;
+        final List<ModifierItem> modifiers = modifiers();
+        TypeText parameterType = type();
+        if (parameterType.range().isEmpty()) {
+            return Optional.empty();
+        }
+        final boolean variable = is(pastAnnotations(at), "...");
+        if (variable) {
+            while (is("@")) {
+                annotation();
+            }
+            parameterType = new TypeText(new TokenRange(parameterType.range().from(), last + 1));
+            advance();
+        }
+        if (is("this") || identifier(at) && is(next(at), ".") && is(next(next(at)), "this")) {
+            return Optional.of(receiver(start, modifiers, parameterType, first));
+        }
+        final Name name = memberName();
+        final TokenRange dimensions = dimensions();
+        final Modifiers written = new Modifiers(modifiers);
+        checkModifiers(written, Set.of("final"), false, new TokenRange(start, last + 1));
+        return Optional.of(new Parameter.Formal(written, parameterType, variable, name, dimensions,
+                new TokenRange(start, last + 1)));
+    }
+
+    /** The receiver parameter, from its name on: {@code this}, alone or after a class's name (JLS 8.4.1). */
+    private Parameter.Receiver receiver(final int start, final List<ModifierItem> modifiers,
+                                        final TypeText parameterType, final boolean first) {
+        annotationsOnly(modifiers);
+        if (!first) {
+            error("'this' names the receiver parameter only, which comes first", at, at + 1);
+        }
+        final int nameStart = at;
+        final StringBuilder text = new StringBuilder();
+        while (!is("this")) {
+            text.append(text(at));
+            advance();
+        }
+        advance();
+        return new Parameter.Receiver(new Modifiers(modifiers), parameterType,
+                new Name(text.append("this").toString(), new TokenRange(nameStart, last + 1)),
+                new TokenRange(start, last + 1));
+    }
+
+    /** Only the last formal parameter may be a variable arity one. */
+    private void checkVariableArity(final List<Parameter> parameters) {
         final List<Parameter.Formal> formal = new Parameters(parameters).formal();
         for (int index = 0; index + 1 < formal.size(); index++) {
             if (formal.get(index).variable()) {
                 error("varargs parameter must be the last parameter", formal.get(index).range());
             }
         }
-        return parameters;
     }
 
     /** Steps over the parenthesis that closes the parameters; or up to a brace or a semicolon, which none can hold. */
