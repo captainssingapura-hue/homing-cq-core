@@ -9,8 +9,11 @@ import javafx.application.Application;
  */
 public record Bench() implements StatelessFunctionalObject {
 
-    /** The JVM's entry point, which starts {@link BenchApp} at once. */
-    public static void main(final String[] args) {
+    /**
+     * The JVM's entry point, which starts {@link BenchApp} at once. It is an instance method: the launcher makes the
+     * bench with its constructor, then starts it.
+     */
+    public void main(final String[] args) {
         Application.launch(BenchApp.class, args);
     }
 }
