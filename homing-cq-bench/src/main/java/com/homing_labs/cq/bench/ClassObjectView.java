@@ -1,7 +1,12 @@
 package com.homing_labs.cq.bench;
 
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
+import com.homing_labs.cq.lang.java.model.InitialisationStep;
+import com.homing_labs.cq.lang.java.model.InitialisationSteps;
+import com.homing_labs.cq.lang.java.model.ProcessedSource;
 import com.homing_labs.cq.lang.java.model.Values;
+import com.homing_labs.cq.lang.java.model.WithSource;
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.Placement;
@@ -28,17 +33,20 @@ import java.util.function.Function;
 
 /**
  * The class object, as the selected unit holds it: the attributes of the class selected - or of every class of the
- * unit, when the unit itself is selected - in two parts. Above, a summary: a line for each class, and one for each
- * object the taxonomy lets a class of its kind have, with how many it can have and how many it has. Below, the values:
- * those of the summary line selected, or every one with no line selected. The unit's attributes were held to the
- * taxonomy when it was read, so every count fits its cardinality. What is selected - a line, or a value below it - is
- * what the source shows.
+ * unit, when the unit itself is selected - in two parts, and how each is initialised apart from them. Above, a
+ * summary: a line for each class, and one for each object the taxonomy lets a class of its kind have, with how many it
+ * can have and how many it has. Below, the values: those of the summary line selected, or every one with no line
+ * selected. The unit's attributes were held to the taxonomy when it was read, so every count fits its cardinality.
+ * Last, the initialisation: each step a class's source writes for it, or why it has none. What is selected - a line, a
+ * value, or a step - is what the source shows.
  */
 public final class ClassObjectView implements BenchView {
 
     private final TableView<Line> summary = new TableView<>();
 
     private final TableView<Detail> details = new TableView<>();
+
+    private final TableView<Stage> initialisation = new TableView<>();
 
     private final Label caption = new Label();
 
@@ -61,6 +69,9 @@ public final class ClassObjectView implements BenchView {
         summary.getColumns().add(column("Count", Line::count, 70));
         summary.setPlaceholder(new Label("Nothing selected"));
         summary.getSelectionModel().selectedItemProperty().addListener((observed, before, line) -> {
+            if (line != null) {
+                initialisation.getSelectionModel().clearSelection();
+            }
             details.getItems().setAll(details(Optional.ofNullable(line)));
             tell();
         });
@@ -70,11 +81,32 @@ public final class ClassObjectView implements BenchView {
         details.getColumns().add(column("Value", (Detail detail) -> detail.row().name(), 600));
         details.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
         details.setPlaceholder(new Label("No values"));
-        details.getSelectionModel().selectedItemProperty().addListener((observed, before, detail) -> tell());
+        details.getSelectionModel().selectedItemProperty().addListener((observed, before, detail) -> {
+            if (detail != null) {
+                initialisation.getSelectionModel().clearSelection();
+            }
+            tell();
+        });
+        initialisation.setId("initialisation");
+        initialisation.getColumns().add(column("Class", (Stage stage) -> stage.step().type(), 200));
+        initialisation.getColumns().add(column("Step", (Stage stage) -> stage.step().kind(), 240));
+        initialisation.getColumns().add(column("Code", (Stage stage) -> stage.step().code(), 600));
+        initialisation.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        initialisation.setPlaceholder(new Label("Nothing selected"));
+        initialisation.getSelectionModel().selectedItemProperty().addListener((observed, before, stage) -> {
+            if (stage != null) {
+                details.getSelectionModel().clearSelection();
+                summary.getSelectionModel().clearSelection();
+            }
+            tell();
+        });
         caption.setPadding(new Insets(6, 8, 6, 8));
-        final SplitPane split = new SplitPane(summary, details);
+        final Label initialised = new Label("Initialisation - how each class's static state is set up, no part of it");
+        initialised.setPadding(new Insets(6, 8, 6, 8));
+        final SplitPane split = new SplitPane(summary, details,
+                new BorderPane(initialisation, initialised, null, null, null));
         split.setOrientation(Orientation.VERTICAL);
-        split.setDividerPositions(0.5);
+        split.setDividerPositions(0.4, 0.75);
         pane.setTop(caption);
         pane.setCenter(split);
     }
@@ -95,6 +127,7 @@ public final class ClassObjectView implements BenchView {
         measured = selection.map(this::measure).orElse(Map.of());
         summary.getItems().setAll(measured.keySet());
         details.getItems().setAll(details(Optional.empty()));
+        initialisation.getItems().setAll(selection.map(this::stages).orElse(List.of()));
         caption.setText(selection.map(selected -> {
             final long classes = measured.keySet().stream().filter(line -> line.cardinality().isEmpty()).count();
             final long values = measured.values().stream().mapToLong(List::size).sum() - classes;
@@ -118,15 +151,26 @@ public final class ClassObjectView implements BenchView {
         return details.getItems().stream().map(Detail::row).toList();
     }
 
-    /** What is selected: the value below the summary, or else the summary's line, or nothing. */
+    /** The steps of how the classes shown are initialised, or why one has none. */
+    public List<Step> steps() {
+        return initialisation.getItems().stream().map(Stage::step).toList();
+    }
+
+    /**
+     * What is selected: the value below the summary, or else the summary's line, or else a step of the initialisation,
+     * or nothing.
+     */
     public Optional<Focus> focused() {
         final Detail detail = details.getSelectionModel().getSelectedItem();
         if (detail != null) {
             return Optional.of(detail.focus());
         }
-        return Optional.ofNullable(summary.getSelectionModel().getSelectedItem()).map(focuses::get);
+        final Line line = summary.getSelectionModel().getSelectedItem();
+        if (line != null) {
+            return Optional.ofNullable(focuses.get(line));
+        }
+        return Optional.ofNullable(initialisation.getSelectionModel().getSelectedItem()).map(Stage::focus);
     }
-
     private void tell() {
         final Optional<Focus> focused = focused();
         listeners.forEach(listener -> listener.accept(focused));
@@ -137,12 +181,8 @@ public final class ClassObjectView implements BenchView {
      * the unit when the unit is selected, or the nested class selected alone.
      */
     private Map<Line, List<Detail>> measure(final Selection selection) {
-        final List<ClassAttributes> shown = UnitClasses.INSTANCE.of(selection.unit()).stream()
-                .filter(each -> selection.type() == selection.unit().type()
-                        || each.name().binaryName().equals(selection.type().getName()))
-                .toList();
         final Map<Line, List<Detail>> lines = new LinkedHashMap<>();
-        for (final ClassAttributes each : shown) {
+        for (final ClassAttributes each : shown(selection)) {
             final ClassName className = each.name();
             final String name = className.binaryName();
             final Class<? extends ObjectKind> kind = each.attributes().kind().getClass();
@@ -164,6 +204,49 @@ public final class ClassObjectView implements BenchView {
             }
         }
         return lines;
+    }
+
+    /** The classes selected: every class of the unit when the unit is selected, or the nested class selected alone. */
+    private List<ClassAttributes> shown(final Selection selection) {
+        return UnitClasses.INSTANCE.of(selection.unit()).stream()
+                .filter(each -> selection.type() == selection.unit().type()
+                        || each.name().binaryName().equals(selection.type().getName()))
+                .toList();
+    }
+
+    /**
+     * How each class selected is initialised: a row for each step its source writes, which selecting shows alone, or
+     * one saying why it has none.
+     */
+    private List<Stage> stages(final Selection selection) {
+        final List<Stage> stages = new ArrayList<>();
+        for (final ClassAttributes each : shown(selection)) {
+            final String type = shortName(each.name().binaryName());
+            final WithSource<ClassInitialisation> initialised = each.initialisation();
+            if (initialised.source() instanceof ProcessedSource.OfInitialisation written) {
+                for (final InitialisationStep step : written.steps().items()) {
+                    stages.add(new Stage(new Step(type, step.getClass().getSimpleName(), ValueText.INSTANCE.of(step)),
+                            new Focus.OfInitialisation(each.name(), new WithSource<>(initialised.object(),
+                                    new ProcessedSource.OfInitialisation(new InitialisationSteps(List.of(step)))))));
+                }
+            } else {
+                stages.add(new Stage(new Step(type, "-", unwritten(initialised)),
+                        new Focus.OfInitialisation(each.name(), initialised)));
+            }
+        }
+        return stages;
+    }
+
+    /** Why a class's initialisation has no steps written. */
+    private String unwritten(final WithSource<ClassInitialisation> initialised) {
+        return switch (initialised.object()) {
+            case ClassInitialisation.None _ -> "No code runs: its static fields are constants, or keep their defaults";
+            case ClassInitialisation.Code _ -> switch (initialised.source()) {
+                case ProcessedSource.Within<?> _ -> "Code runs, written somewhere in code not read yet";
+                case ProcessedSource.Unavailable<?> _ -> "Code runs; the unit was read without its source";
+                default -> "Code runs that the source does not write: the compiler's own";
+            };
+        };
     }
 
     private List<Detail> details(final Optional<Line> line) {
@@ -202,5 +285,13 @@ public final class ClassObjectView implements BenchView {
 
     /** A row of the values, and what selecting it shows in the source. */
     private record Detail(Row row, Focus focus) {
+    }
+
+    /** A row of the initialisation: the class, the kind of step, and its code in a line - or why there is none. */
+    public record Step(String type, String kind, String code) implements Scalar {
+    }
+
+    /** A row of the initialisation, and what selecting it shows in the source. */
+    private record Stage(Step step, Focus focus) {
     }
 }

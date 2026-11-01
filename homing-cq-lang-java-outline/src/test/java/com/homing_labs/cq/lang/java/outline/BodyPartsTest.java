@@ -241,7 +241,7 @@ class BodyPartsTest {
         assertEquals(List.of(
                         "Field StaticField Method$Implementation StaticMethod$Implementation"
                                 + " Method$NativeImplementation StaticMethod$NativeImplementation Constructor"
-                                + " StaticInitialiser - MemberClass StaticMemberClass StaticMemberClass"
+                                + " - - MemberClass StaticMemberClass StaticMemberClass"
                                 + " StaticMemberClass StaticMemberClass -",
                         "Method$Declaration",
                         "StaticField Method$Declaration Method$DefaultImplementation StaticMethod$Implementation"

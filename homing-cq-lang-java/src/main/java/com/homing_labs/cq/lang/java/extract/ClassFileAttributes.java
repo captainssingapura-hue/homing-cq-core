@@ -5,6 +5,7 @@ import com.homing_labs.cq.lang.java.model.Annotations;
 import com.homing_labs.cq.lang.java.model.AppliedAnnotation;
 import com.homing_labs.cq.lang.java.model.Arity;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.ClassNames;
 import com.homing_labs.cq.lang.java.model.ConstructorSignature;
@@ -19,7 +20,6 @@ import com.homing_labs.cq.lang.java.model.Entries;
 import com.homing_labs.cq.lang.java.model.EnumConstantValue;
 import com.homing_labs.cq.lang.java.model.Extensibility;
 import com.homing_labs.cq.lang.java.model.FieldValue;
-import com.homing_labs.cq.lang.java.model.InitialiserValue;
 import com.homing_labs.cq.lang.java.model.MethodSignature;
 import com.homing_labs.cq.lang.java.model.MethodValue;
 import com.homing_labs.cq.lang.java.model.Mutability;
@@ -51,7 +51,6 @@ import com.homing_labs.cq.lang.java.taxonomy.Dependency;
 import com.homing_labs.cq.lang.java.taxonomy.EnumConstant;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.RecordComponent;
-import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
 import com.homing_labs.cq.lang.java.taxonomy.Superinterface;
 import com.homing_labs.cq.lang.java.taxonomy.TypeParameter;
@@ -92,7 +91,8 @@ import java.util.stream.Stream;
  * member is put under the object of the taxonomy the {@link ClassScanner} says it is, and {@link Entries} shapes what
  * was found into the attributes of the class's kind. A local or anonymous class is the class's when its own class file
  * says it is declared in the class's code; a class the compiler generated is none of the class's, as the scanner
- * lists none. The class file has no source, so every value's is unavailable here, until the unit is given its own.
+ * lists none. Beside the attributes of each class, how it is initialised: no part of it. The class file has no source,
+ * so every value's is unavailable here, until the unit is given its own.
  */
 public record ClassFileAttributes() implements StatelessFunctionalObject {
 
@@ -103,11 +103,32 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
      * loader loaded has no loader of its own, and its class files are read through the system's.
      */
     public Attributes of(final Class<?> type) {
-        final ClassLoader loader = type.getClassLoader();
-        return read(loader == null ? ClassLoader.getSystemClassLoader() : loader, type.getName().replace('.', '/'));
+        return read(loader(type), type.getName().replace('.', '/')).attributes();
     }
 
-    private Attributes read(final ClassLoader loader, final String internalName) {
+    /**
+     * How a class is initialised, from its class file: whether code runs - which the source can tell the steps of - or
+     * none. It has no source yet.
+     */
+    public WithSource<ClassInitialisation> initialisation(final Class<?> type) {
+        return initialisation(ClassFile.of().parse(bytes(loader(type), type.getName().replace('.', '/'))));
+    }
+
+    /** The loader to read a class's class files through: its own, or the system's for one the bootstrap loaded. */
+    private ClassLoader loader(final Class<?> type) {
+        final ClassLoader loader = type.getClassLoader();
+        return loader == null ? ClassLoader.getSystemClassLoader() : loader;
+    }
+
+    /** How the class a class file declares is initialised: by code, when it has a static initialiser, or by none. */
+    private WithSource<ClassInitialisation> initialisation(final ClassModel parsed) {
+        final ClassInitialisation initialisation = parsed.methods().stream()
+                .anyMatch(method -> method.methodName().equalsString("<clinit>"))
+                ? ClassInitialisation.Code.INSTANCE : ClassInitialisation.None.INSTANCE;
+        return new WithSource<>(initialisation, new ProcessedSource.Unavailable<>());
+    }
+
+    private Read read(final ClassLoader loader, final String internalName) {
         final byte[] classFile = bytes(loader, internalName);
         final ClassModel parsed = ClassFile.of().parse(classFile);
         final ClassKind kind = ClassScanner.INSTANCE.kindOf(parsed);
@@ -163,7 +184,9 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
                 case "<init>" -> add(found, Constructor.INSTANCE, new ConstructorValue(parameters, thrown(method),
                         methodSignature.map(this::constructorSignature), visibility(flags), arity(flags),
                         origin(flags), annotations(method), parameterAnnotations(method)));
-                case "<clinit>" -> add(found, StaticInitialiser.INSTANCE, new InitialiserValue(origin(flags)));
+                case "<clinit>" -> {
+                    // how the class is initialised, which is no part of it: read beside its attributes
+                }
                 default -> add(found, ClassScanner.INSTANCE.methodKindOf(parsed, method), new MethodValue(
                         method.methodName().stringValue(), parameters, result(method.methodTypeSymbol().returnType()),
                         thrown(method), methodSignature.map(this::methodSignature), visibility(flags),
@@ -178,15 +201,17 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
         }
         for (final InnerClassInfo member : ClassScanner.INSTANCE.memberClasses(parsed)) {
             final String memberName = member.innerClass().asInternalName();
+            final Read read = read(loader, memberName);
             add(found, ClassScanner.INSTANCE.memberClassKindOf(member),
-                    new NestedClass(name(memberName), read(loader, memberName)));
+                    new NestedClass(name(memberName), read.attributes(), read.initialisation()));
         }
         for (final InnerClassInfo candidate : ClassScanner.INSTANCE.codeClassCandidates(parsed)) {
             final String candidateName = candidate.innerClass().asInternalName();
             final ClassModel declared = ClassFile.of().parse(bytes(loader, candidateName));
             if (ClassScanner.INSTANCE.enclosingClassOf(declared).filter(internalName::equals).isPresent()) {
+                final Read read = read(loader, candidateName);
                 add(found, ClassScanner.INSTANCE.codeClassKindOf(declared).orElseThrow(), new EnclosedClass(
-                        name(candidateName), enclosure(declared), read(loader, candidateName)));
+                        name(candidateName), enclosure(declared), read.attributes(), read.initialisation()));
             }
         }
         for (final Occurrence occurrence : ClassScanner.INSTANCE.scan(classFile)) {
@@ -195,10 +220,14 @@ public record ClassFileAttributes() implements StatelessFunctionalObject {
             }
         }
         try {
-            return Entries.INSTANCE.of(kind, found);
+            return new Read(Entries.INSTANCE.of(kind, found), initialisation(parsed));
         } catch (final IllegalArgumentException e) {
             throw new IllegalArgumentException(name(internalName).binaryName() + ": " + e.getMessage(), e);
         }
+    }
+
+    /** A class as its class files have it: its attributes, and how it is initialised beside them. */
+    private record Read(Attributes attributes, WithSource<ClassInitialisation> initialisation) {
     }
 
     /** A value found for an object, without its source: the class file alone does not have it. */

@@ -9,6 +9,7 @@ import com.homing_labs.cq.lang.java.fixtures.AnInterface;
 import com.homing_labs.cq.lang.java.fixtures.Nesting;
 import com.homing_labs.cq.lang.java.fixtures.Plain;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.ProcessedSource;
 import com.homing_labs.cq.lang.java.model.WithSource;
@@ -28,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class JavaUnitTest {
+
+    /** How a class is initialised that runs no code, its source not known. */
+    private static final WithSource<ClassInitialisation> NOTHING =
+            new WithSource<>(ClassInitialisation.None.INSTANCE, new ProcessedSource.Unavailable<>());
 
     @Test
     void aUnitIsOfItsClassKind() {
@@ -58,8 +63,11 @@ class JavaUnitTest {
         assertInstanceOf(ProcessedSource.Unwritten.class,
                 unit.attributes().entry(Constructor.INSTANCE).all().getFirst().source(),
                 "each with its source: the default constructor is written nowhere");
+        assertEquals(new WithSource<>(ClassInitialisation.None.INSTANCE, new ProcessedSource.Unwritten<>()),
+                unit.initialisation(), "beside them, how it is initialised: no code runs, and none is written");
         assertEquals(ClassFileAttributes.INSTANCE.of(Plain.class), JavaUnits.INSTANCE.of(Plain.class,
                 Optional.empty()).attributes(), "a unit read without its source keeps its attributes as they are");
+        assertEquals(NOTHING, JavaUnits.INSTANCE.of(Plain.class, Optional.empty()).initialisation());
     }
 
     private List<List<Scalar>> objects(final Attributes attributes) {
@@ -72,7 +80,7 @@ class JavaUnitTest {
     void aUnitRefusesAClassOfAnotherKind() {
         final IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
                 () -> new EnumUnit(Plain.class, identity(Plain.class, ClassKind.Enum.INSTANCE),
-                        ClassFileAttributes.INSTANCE.of(AnEnum.class), Optional.empty()));
+                        ClassFileAttributes.INSTANCE.of(AnEnum.class), NOTHING, Optional.empty()));
         assertEquals("com.homing_labs.cq.lang.java.fixtures.Plain is a class, not an enum", refused.getMessage());
     }
 
@@ -80,14 +88,14 @@ class JavaUnitTest {
     void aUnitRefusesTheIdentityOfAnotherClass() {
         assertThrows(IllegalArgumentException.class, () -> new ClassUnit(Plain.class,
                 identity(Nesting.class, ClassKind.Class.INSTANCE), ClassFileAttributes.INSTANCE.of(Plain.class),
-                Optional.empty()));
+                NOTHING, Optional.empty()));
     }
 
     @Test
     void aUnitRefusesTheAttributesOfAnotherKind() {
         final IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
                 () -> new ClassUnit(Plain.class, identity(Plain.class, ClassKind.Class.INSTANCE),
-                        ClassFileAttributes.INSTANCE.of(AnEnum.class), Optional.empty()));
+                        ClassFileAttributes.INSTANCE.of(AnEnum.class), NOTHING, Optional.empty()));
         assertEquals("The attributes are those of an enum, but com.homing_labs.cq.lang.java.fixtures.Plain is a"
                 + " class", refused.getMessage());
     }
@@ -96,7 +104,7 @@ class JavaUnitTest {
     void aUnitRefusesANestedClass() {
         final IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
                 () -> new ClassUnit(Nesting.Member.class, identity(Nesting.Member.class, ClassKind.Class.INSTANCE),
-                        ClassFileAttributes.INSTANCE.of(Nesting.Member.class), Optional.empty()));
+                        ClassFileAttributes.INSTANCE.of(Nesting.Member.class), NOTHING, Optional.empty()));
         assertEquals("A JavaUnit is a top-level class, but com.homing_labs.cq.lang.java.fixtures.Nesting$Member"
                 + " is nested in com.homing_labs.cq.lang.java.fixtures.Nesting", refused.getMessage());
     }

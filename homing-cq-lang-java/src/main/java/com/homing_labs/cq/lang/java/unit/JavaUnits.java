@@ -4,7 +4,9 @@ import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.extract.ClassFileAttributes;
 import com.homing_labs.cq.lang.java.extract.SourceLocator;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
+import com.homing_labs.cq.lang.java.model.WithSource;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
@@ -15,8 +17,8 @@ import java.util.Optional;
  * Makes the unit of a top-level class, of the class's kind, from the loaded class and its source if it was found: the
  * one way in. The kind is read from the class, as reflection sees it - the same kind the taxonomy's scanner reads from
  * its class file: an annotation, an interface, an enum, a record, an abstract class, or else a class. Its attributes
- * are read from its class files, and, when it has its source, each value is given its source, processed by the
- * {@link SourceLocator}.
+ * are read from its class files, with how the class is initialised beside them, and, when it has its source, each
+ * value - and the initialisation - is given its source, processed by the {@link SourceLocator}.
  */
 public record JavaUnits() implements StatelessFunctionalObject {
 
@@ -25,19 +27,23 @@ public record JavaUnits() implements StatelessFunctionalObject {
     /** The unit of a top-level class, with its source if it was found. */
     public JavaUnit of(final Class<?> type, final Optional<JavaSource> source) {
         final Identity identity = new Identity(new ClassName(type.getName()), kindOf(type));
-        final JavaUnit read = unit(type, identity, ClassFileAttributes.INSTANCE.of(type), source);
-        return source.isEmpty() ? read : unit(type, identity, SourceLocator.INSTANCE.sourced(read), source);
+        final JavaUnit read = unit(type, identity, ClassFileAttributes.INSTANCE.of(type),
+                ClassFileAttributes.INSTANCE.initialisation(type), source);
+        return SourceLocator.INSTANCE.outline(read)
+                .map(outline -> unit(type, identity, SourceLocator.INSTANCE.sourced(read, outline),
+                        SourceLocator.INSTANCE.initialisation(read, outline), source))
+                .orElse(read);
     }
 
     private JavaUnit unit(final Class<?> type, final Identity identity, final Attributes attributes,
-                          final Optional<JavaSource> source) {
+                          final WithSource<ClassInitialisation> initialisation, final Optional<JavaSource> source) {
         return switch (identity.kind()) {
-            case ClassKind.Class _ -> new ClassUnit(type, identity, attributes, source);
-            case ClassKind.AbstractClass _ -> new AbstractClassUnit(type, identity, attributes, source);
-            case ClassKind.Interface _ -> new InterfaceUnit(type, identity, attributes, source);
-            case ClassKind.Enum _ -> new EnumUnit(type, identity, attributes, source);
-            case ClassKind.Record _ -> new RecordUnit(type, identity, attributes, source);
-            case ClassKind.Annotation _ -> new AnnotationUnit(type, identity, attributes, source);
+            case ClassKind.Class _ -> new ClassUnit(type, identity, attributes, initialisation, source);
+            case ClassKind.AbstractClass _ -> new AbstractClassUnit(type, identity, attributes, initialisation, source);
+            case ClassKind.Interface _ -> new InterfaceUnit(type, identity, attributes, initialisation, source);
+            case ClassKind.Enum _ -> new EnumUnit(type, identity, attributes, initialisation, source);
+            case ClassKind.Record _ -> new RecordUnit(type, identity, attributes, initialisation, source);
+            case ClassKind.Annotation _ -> new AnnotationUnit(type, identity, attributes, initialisation, source);
         };
     }
 

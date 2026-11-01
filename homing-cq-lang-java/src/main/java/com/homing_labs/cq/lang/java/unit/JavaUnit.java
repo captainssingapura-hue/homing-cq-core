@@ -4,6 +4,8 @@ import com.homing_labs.cq.core.def.QcUnit;
 import com.homing_labs.cq.core.def.lang.JavaLang;
 import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
+import com.homing_labs.cq.lang.java.model.WithSource;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 
 import java.util.Optional;
@@ -28,6 +30,9 @@ public sealed interface JavaUnit extends QcUnit<JavaLang>
 
     /** What the class has, by the objects of the taxonomy. */
     Attributes attributes();
+
+    /** How the class's static state is set up when it is initialised: no part of it, so held beside its attributes. */
+    WithSource<ClassInitialisation> initialisation();
 
     /** The source file that declares the class, when it was found. */
     Optional<JavaSource> source();

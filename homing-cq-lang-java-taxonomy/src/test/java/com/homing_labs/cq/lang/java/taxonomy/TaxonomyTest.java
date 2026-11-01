@@ -28,7 +28,7 @@ class TaxonomyTest {
         assertEquals(Set.of(ClassKind.Class.class, ClassKind.AbstractClass.class, ClassKind.Interface.class,
                         ClassKind.Enum.class, ClassKind.Record.class, ClassKind.Annotation.class,
                         ClassProperty.Visibility.class, ClassProperty.Extensibility.class, ClassAnnotation.class,
-                        TypeParameter.class, Constructor.class, StaticInitialiser.class, Superclass.class,
+                        TypeParameter.class, Constructor.class, Superclass.class,
                         Superinterface.class,
                         Dependency.Signature.class, Dependency.Annotation.class, Dependency.Code.class,
                         Dependency.LocalVariable.class, Dependency.Nesting.class, Dependency.PermittedSubclass.class,
@@ -51,7 +51,6 @@ class TaxonomyTest {
     void theMembersOfEachKindOfClass() {
         assertEquals(withDependencies(true, Map.ofEntries(
                         entry(Constructor.class, OneOrMore.class),
-                        entry(StaticInitialiser.class, ZeroOrOne.class),
                         entry(Superclass.class, ZeroOrOne.class),
                         entry(Superinterface.class, ZeroOrMore.class),
                         entry(StaticField.class, ZeroOrMore.class),
@@ -66,7 +65,6 @@ class TaxonomyTest {
                 members(MemberOf.Class.class));
         assertEquals(withDependencies(true, Map.ofEntries(
                         entry(Constructor.class, OneOrMore.class),
-                        entry(StaticInitialiser.class, ZeroOrOne.class),
                         entry(Superclass.class, One.class),
                         entry(Superinterface.class, ZeroOrMore.class),
                         entry(StaticField.class, ZeroOrMore.class),
@@ -81,7 +79,6 @@ class TaxonomyTest {
                         entry(TypeParameter.class, ZeroOrMore.class))),
                 members(MemberOf.AbstractClass.class));
         assertEquals(withDependencies(true, Map.ofEntries(
-                        entry(StaticInitialiser.class, ZeroOrOne.class),
                         entry(Superinterface.class, ZeroOrMore.class),
                         entry(StaticField.class, ZeroOrMore.class),
                         entry(StaticMethod.Implementation.class, ZeroOrMore.class),
@@ -93,7 +90,6 @@ class TaxonomyTest {
                 members(MemberOf.Interface.class));
         assertEquals(withDependencies(true, Map.ofEntries(
                         entry(Constructor.class, OneOrMore.class),
-                        entry(StaticInitialiser.class, One.class),
                         entry(Superclass.class, One.class),
                         entry(Superinterface.class, ZeroOrMore.class),
                         entry(StaticField.class, OneOrMore.class),
@@ -109,7 +105,6 @@ class TaxonomyTest {
                 members(MemberOf.Enum.class));
         assertEquals(withDependencies(false, Map.ofEntries(
                         entry(Constructor.class, OneOrMore.class),
-                        entry(StaticInitialiser.class, ZeroOrOne.class),
                         entry(Superclass.class, One.class),
                         entry(Superinterface.class, ZeroOrMore.class),
                         entry(StaticField.class, ZeroOrMore.class),
@@ -122,7 +117,6 @@ class TaxonomyTest {
                         entry(TypeParameter.class, ZeroOrMore.class))),
                 members(MemberOf.Record.class));
         assertEquals(withDependencies(false, Map.ofEntries(
-                        entry(StaticInitialiser.class, ZeroOrOne.class),
                         entry(Superinterface.class, One.class),
                         entry(StaticField.class, ZeroOrMore.class),
                         entry(StaticMethod.Implementation.class, ZeroOrMore.class),
@@ -214,7 +208,6 @@ class TaxonomyTest {
         assertEquals(ClassProperty.Visibility.INSTANCE, new ClassProperty.Visibility());
         assertEquals(ClassProperty.Extensibility.INSTANCE, new ClassProperty.Extensibility());
         assertEquals(Constructor.INSTANCE, new Constructor());
-        assertEquals(StaticInitialiser.INSTANCE, new StaticInitialiser());
         assertEquals(Superclass.INSTANCE, new Superclass());
         assertEquals(Superinterface.INSTANCE, new Superinterface());
         assertEquals(Dependency.Signature.INSTANCE, new Dependency.Signature());

@@ -7,7 +7,6 @@ import com.homing_labs.cq.lang.java.taxonomy.Constructor;
 import com.homing_labs.cq.lang.java.taxonomy.Field;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.Placement;
-import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
 import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import hue.captains.singapura.tao.ontology.Scalar;
@@ -46,7 +45,6 @@ class AttributesTest {
             Visibility.class, Visibility.Public.INSTANCE,
             Extensibility.class, Extensibility.Open.INSTANCE,
             ConstructorValue.class, CONSTRUCTOR.object(),
-            InitialiserValue.class, new InitialiserValue(Origin.Declared.INSTANCE),
             FieldValue.class, new FieldValue("field", new TypeUse.Named(new ClassName("java.lang.Object")),
                     Optional.empty(), Visibility.Public.INSTANCE, Mutability.Mutable.INSTANCE,
                     Persistence.Persistent.INSTANCE, Origin.Declared.INSTANCE, NONE),
@@ -113,8 +111,8 @@ class AttributesTest {
     @Test
     void anEntryMissingOrShapedAgainstItsCardinalityIsRefused() {
         final Map<ObjectKind, Entry> missing = new LinkedHashMap<>(plain.byObject());
-        missing.remove(StaticInitialiser.INSTANCE);
-        assertEquals("The attributes of a class have no entry for StaticInitialiser",
+        missing.remove(Superclass.INSTANCE);
+        assertEquals("The attributes of a class have no entry for Superclass",
                 assertThrows(IllegalArgumentException.class,
                         () -> new Attributes(ClassKind.Class.INSTANCE, missing)).getMessage());
         final Map<ObjectKind, Entry> misshaped = new LinkedHashMap<>(plain.byObject());
@@ -128,7 +126,9 @@ class AttributesTest {
     void theHolderHoldsToTheOntology() {
         for (final Class<?> type : List.of(Attributes.class, Entry.One.class, Entry.ZeroOrOne.class,
                 Entry.Many.class, Values.class, Entries.class, ValueTypes.class, NestedClass.class, FieldValue.class,
-                MethodValue.class, ConstructorValue.class, InitialiserValue.class, WithSource.class,
+                MethodValue.class, ConstructorValue.class, ClassInitialisation.None.class, ClassInitialisation.Code.class,
+                InitialisationStep.InitialValue.class, InitialisationStep.EnumConstant.class,
+                InitialisationStep.StaticBlock.class, InitialisationSteps.class, WithSource.class,
                 EnclosedClass.class, Enclosure.InMethod.class, Enclosure.InConstructor.class,
                 Enclosure.InInitialiser.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());

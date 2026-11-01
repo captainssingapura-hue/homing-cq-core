@@ -13,7 +13,6 @@ import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.RecordComponent;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
-import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMethod;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
@@ -83,7 +82,9 @@ public record ClassScanner() implements StatelessFunctionalObject {
             model.findAttribute(Attributes.record()).orElseThrow().components().forEach(component -> found.add(
                     new Occurrence.OfMember(name, RecordComponent.INSTANCE, component.name().stringValue())));
         }
-        model.methods().forEach(method -> found.add(member(name, model, method)));
+        model.methods().stream()
+                .filter(method -> !method.methodName().equalsString("<clinit>"))
+                .forEach(method -> found.add(member(name, model, method)));
         memberClasses(model).forEach(member -> found.add(
                 new Occurrence.OfMember(name, memberClassKindOf(member), member.innerClass().asInternalName())));
         enclosingClassOf(model).ifPresent(enclosing -> found.add(
@@ -235,19 +236,20 @@ public record ClassScanner() implements StatelessFunctionalObject {
         return classFlagsOf(model).contains(AccessFlag.FINAL) ? "final" : isSealed(model) ? "sealed" : "open";
     }
 
+    /**
+     * A method of the class as a member: a constructor, or a method of its kind. The static initialiser is none - it is
+     * how the JVM initialises the class, not a part of it - and is not passed here.
+     */
     private Occurrence member(final String name, final ClassModel model, final MethodModel method) {
         final String methodName = method.methodName().stringValue();
         final String signature = methodName + method.methodType().stringValue();
-        return switch (methodName) {
-            case "<init>" -> new Occurrence.OfMember(name, Constructor.INSTANCE, signature);
-            case "<clinit>" -> new Occurrence.OfMember(name, StaticInitialiser.INSTANCE, signature);
-            default -> new Occurrence.OfMember(name, methodKindOf(model, method), signature);
-        };
+        return methodName.equals("<init>") ? new Occurrence.OfMember(name, Constructor.INSTANCE, signature)
+                : new Occurrence.OfMember(name, methodKindOf(model, method), signature);
     }
 
     /**
-     * Which kind of method a method of the class is, other than a constructor or the static initialiser: static or
-     * instance, and a declaration, an implementation, a default or a native one.
+     * Which kind of method a method of the class is, other than a constructor: static or instance, and a declaration, an
+     * implementation, a default or a native one.
      */
     public ObjectKind methodKindOf(final ClassModel model, final MethodModel method) {
         if (method.flags().has(AccessFlag.STATIC)) {

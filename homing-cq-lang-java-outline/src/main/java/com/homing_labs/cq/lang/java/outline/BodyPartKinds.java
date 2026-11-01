@@ -7,7 +7,6 @@ import com.homing_labs.cq.lang.java.taxonomy.MemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
-import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMethod;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
@@ -18,8 +17,9 @@ import java.util.Optional;
  * Links each part of a type's body to the kind of object the taxonomy has for it, in the class the type compiles to.
  *
  * <p>What the part does not say, the type it is in does: an interface's fields are static, its member types too, and
- * its methods abstract unless written default, static or private. Two parts have no kind: an instance initializer,
- * whose code runs as part of each constructor's, and a semicolon.</p>
+ * its methods abstract unless written default, static or private. Three parts have no kind: an instance initializer,
+ * whose code runs as part of each constructor's; a static one, whose code runs as part of how the class is
+ * initialised, no part of the class; and a semicolon.</p>
  */
 public record BodyPartKinds() implements StatelessFunctionalObject {
 
@@ -34,13 +34,11 @@ public record BodyPartKinds() implements StatelessFunctionalObject {
                     ? StaticField.INSTANCE : Field.INSTANCE);
             case BodyPart.Method method -> Optional.of(method(enclosing, method.modifiers()));
             case BodyPart.Constructor _, BodyPart.CompactConstructor _ -> Optional.of(Constructor.INSTANCE);
-            case BodyPart.Initializer initializer -> initializer.isStatic()
-                    ? Optional.of(StaticInitialiser.INSTANCE) : Optional.empty();
             case BodyPart.TypeDeclaration type -> Optional.of(inInterface || type.header().modifiers().has("static")
                     || !(type.header().keyword() instanceof TypeKeyword.Class)
                     ? StaticMemberClass.INSTANCE : MemberClass.INSTANCE);
             case BodyPart.EnumConstant _ -> Optional.of(EnumConstant.INSTANCE);
-            case BodyPart.EmptyDeclaration _, BodyPart.Unrecognised _ -> Optional.empty();
+            case BodyPart.Initializer _, BodyPart.EmptyDeclaration _, BodyPart.Unrecognised _ -> Optional.empty();
         };
     }
 

@@ -3,6 +3,7 @@ package com.homing_labs.cq.bench;
 import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.extract.SourceLocator;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.CodeBlocks;
 import com.homing_labs.cq.lang.java.model.EnclosedClass;
@@ -139,7 +140,8 @@ public final class SourceView implements Mutable {
                     written.addAll(constructor.initialisers().items());
                 }
                 case ProcessedSource.Written<?> found -> written.add(found.block());
-                case ProcessedSource.OfInitialiser initialiser -> written.addAll(initialiser.blocks().items());
+                case ProcessedSource.OfInitialisation initialisation -> initialisation.steps().items()
+                        .forEach(step -> written.add(step.block()));
                 case ProcessedSource.Within<?> found -> within.addAll(found.blocks().items());
                 case ProcessedSource.Unwritten<?> _, ProcessedSource.Unplaced<?> _,
                      ProcessedSource.Unavailable<?> _ -> {
@@ -162,6 +164,7 @@ public final class SourceView implements Mutable {
             case Focus.OfClass ofClass -> List.of(holding(unit.attributes(), ofClass.name())
                     .<ProcessedSource<?>>map(WithSource::source)
                     .orElseGet(ProcessedSource.Unwritten::new));
+            case Focus.OfInitialisation initialisation -> List.of(initialisation.initialisation().source());
         };
     }
 
@@ -187,7 +190,8 @@ public final class SourceView implements Mutable {
     private String said(final Focus focus, final List<ProcessedSource<?>> sources) {
         return switch (focus) {
             case Focus.OfClass ofClass -> shortName(ofClass.name()) + switch (sources.getFirst()) {
-                case ProcessedSource.Written<?> _, ProcessedSource.OfInitialiser _ -> " is declared where highlighted.";
+                case ProcessedSource.Written<?> _, ProcessedSource.OfInitialisation _ ->
+                        " is declared where highlighted.";
                 case ProcessedSource.Within<?> _ -> " is declared somewhere in the lightly highlighted code, which is"
                         + " not read yet.";
                 case ProcessedSource.Unwritten<?> _, ProcessedSource.Unplaced<?> _,
@@ -201,8 +205,7 @@ public final class SourceView implements Mutable {
                 final boolean one = sources.size() == 1;
                 final List<String> said = new ArrayList<>();
                 count(sources, one, "written where highlighted", said,
-                        source -> source instanceof ProcessedSource.Written<?>
-                                || source instanceof ProcessedSource.OfInitialiser);
+                        source -> source instanceof ProcessedSource.Written<?>);
                 count(sources, one, "written somewhere in the lightly highlighted code, which is not read yet", said,
                         source -> source instanceof ProcessedSource.Within<?>);
                 count(sources, one, "written nowhere: the compiler implied or generated it", said,
@@ -213,6 +216,28 @@ public final class SourceView implements Mutable {
                         source -> source instanceof ProcessedSource.Unavailable<?>);
                 yield (one ? object : sources.size() + " values of " + object) + ": " + String.join("; ", said) + ".";
             }
+            case Focus.OfInitialisation initialisation -> initialised(initialisation);
+        };
+    }
+
+    /** How a class is initialised, or the steps of it selected, in a sentence. */
+    private String initialised(final Focus.OfInitialisation focus) {
+        final String name = shortName(focus.inClass());
+        return switch (focus.initialisation().object()) {
+            case ClassInitialisation.None _ -> name + " runs no code to be initialised: its static fields are"
+                    + " constants, or keep their defaults.";
+            case ClassInitialisation.Code _ -> switch (focus.initialisation().source()) {
+                case ProcessedSource.OfInitialisation written -> {
+                    final int steps = written.steps().items().size();
+                    yield "How " + name + " is initialised: " + (steps == 1 ? "a step" : steps + " steps")
+                            + ", written where highlighted.";
+                }
+                case ProcessedSource.Within<?> _ -> name + " is initialised by code written somewhere in the lightly"
+                        + " highlighted code, which is not read yet.";
+                case ProcessedSource.Unavailable<?> _ -> name + " runs code to be initialised; the unit was read"
+                        + " without its source.";
+                default -> name + " runs code to be initialised that its source does not write: the compiler's own.";
+            };
         };
     }
 

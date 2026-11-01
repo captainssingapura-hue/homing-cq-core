@@ -9,7 +9,6 @@ import java.util.function.Function;
  * An annotation with every object of the taxonomy an annotation can have:
  * <ul>
  *     <li>superinterface: {@link java.lang.annotation.Annotation}, which its source does not name</li>
- *     <li>static initialiser: for {@code NAMER}, whose initialiser is not a constant</li>
  *     <li>class object - fields: {@code DEFAULT_LEVEL}, {@code OK} and {@code NAMER}; implementation: the one javac
  *     generates for the lambda in {@code NAMER}; member class: {@code Kind}</li>
  *     <li>instances - declarations: the elements {@code value}, and {@code level}, with a default</li>
@@ -19,6 +18,8 @@ import java.util.function.Function;
  *     parameter), in nesting and an inlined constant ({@link HttpURLConnection#HTTP_OK}); an annotation cannot be
  *     sealed</li>
  * </ul>
+ * <p>Beside them, and no object of the taxonomy, how it is initialised: giving {@code NAMER} its value, which is
+ * not a constant.</p>
  */
 @Retention(RetentionPolicy.RUNTIME)
 public @interface SampleAnnotation {

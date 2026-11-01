@@ -14,7 +14,6 @@ import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.RecordComponent;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
-import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMethod;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
@@ -44,7 +43,6 @@ public record ValueTypes() implements StatelessFunctionalObject {
             case Superclass _, Superinterface _ -> TypeUse.class;
             case Dependency _ -> ClassName.class;
             case Constructor _ -> ConstructorValue.class;
-            case StaticInitialiser _ -> InitialiserValue.class;
             case StaticField _, Field _ -> FieldValue.class;
             case EnumConstant _ -> EnumConstantValue.class;
             case RecordComponent _ -> RecordComponentValue.class;

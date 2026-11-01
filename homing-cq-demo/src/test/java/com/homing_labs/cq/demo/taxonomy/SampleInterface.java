@@ -9,7 +9,6 @@ import java.util.function.Supplier;
  * An interface with every object of the taxonomy an interface can have:
  * <ul>
  *     <li>type parameter: {@code T}; superinterface: {@link Supplier}</li>
- *     <li>static initialiser: for {@code NAMES}, whose initialiser is not a constant</li>
  *     <li>class object - fields: {@code NAMES} and {@code OK}; implementation: {@code known}; member class:
  *     {@code Names}</li>
  *     <li>instances - declaration: {@code name}; default implementations: {@code get}, and {@code as}, generic in
@@ -21,6 +20,8 @@ import java.util.function.Supplier;
  *     nesting, a permitted subclass ({@link SampleAbstractClass}) and an inlined constant
  *     ({@link HttpURLConnection#HTTP_OK})</li>
  * </ul>
+ * <p>Beside them, and no object of the taxonomy, how it is initialised: giving {@code NAMES} its value, which is
+ * not a constant.</p>
  */
 @SampleAnnotation("interface")
 public sealed interface SampleInterface<T> extends Supplier<String> permits SampleAbstractClass {

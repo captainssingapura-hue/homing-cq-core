@@ -69,6 +69,25 @@ class ClassScannerTest {
     }
 
     @Test
+    void theStaticInitialiserIsNoPartOfTheClassButWhatItsCodeUsesIsADependency() throws IOException {
+        final List<Occurrence> found = ClassScanner.INSTANCE.scan(classFile(Initialised.class));
+        assertTrue(found.stream().noneMatch(occurrence -> occurrence instanceof Occurrence.OfMember member
+                && member.name().startsWith("<clinit>")), "how the class is initialised is not one of its parts");
+        assertTrue(found.contains(new Occurrence.OfMember(internalName(Initialised.class), Dependency.Code.INSTANCE,
+                "java/util/concurrent/atomic/AtomicLong")), "its static block makes one");
+    }
+
+    /** A class whose static block makes an object of a class it names nowhere else. */
+    private static final class Initialised {
+
+        static final Object MADE;
+
+        static {
+            MADE = new java.util.concurrent.atomic.AtomicLong();
+        }
+    }
+
+    @Test
     void aClassHasTheAnnotationsItsClassFileKeeps() throws IOException {
         assertEquals(List.of("java/lang/Deprecated"),
                 ClassScanner.INSTANCE.scan(classFile(DependencyFixture.class)).stream()

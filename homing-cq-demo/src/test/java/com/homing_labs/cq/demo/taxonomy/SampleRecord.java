@@ -11,7 +11,7 @@ import java.util.List;
  *     {@code ? super T}; superclass: {@link Record}, which its source does not name; superinterface:
  *     {@link Comparable}, of the record</li>
  *     <li>record components: {@code name}, {@code size}, and {@code parts}, a list of {@code T}</li>
- *     <li>constructors: the canonical one, compact, and one more; static initialiser: the static block</li>
+ *     <li>constructors: the canonical one, compact, and one more</li>
  *     <li>class object - fields: {@code EMPTY} and {@code OK}; implementation: {@code of}; member class:
  *     {@code Comparators}</li>
  *     <li>instances - fields: the components', {@code name}, {@code size} and {@code parts}; implementations:
@@ -22,6 +22,7 @@ import java.util.List;
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
  *     nesting and an inlined constant ({@link HttpURLConnection#HTTP_OK}); a record cannot be sealed</li>
  * </ul>
+ * <p>Beside them, and no object of the taxonomy, how it is initialised: here its static block.</p>
  */
 @SampleAnnotation("record")
 public record SampleRecord<T extends Number & Comparable<? super T>>(String name, int size, List<T> parts)

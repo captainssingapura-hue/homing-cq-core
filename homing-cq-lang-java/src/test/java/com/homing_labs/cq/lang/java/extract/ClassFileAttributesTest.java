@@ -12,6 +12,7 @@ import com.homing_labs.cq.lang.java.model.Annotations;
 import com.homing_labs.cq.lang.java.model.AppliedAnnotation;
 import com.homing_labs.cq.lang.java.model.Arity;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.ClassNames;
 import com.homing_labs.cq.lang.java.model.ConstructorSignature;
@@ -63,7 +64,6 @@ import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.RecordComponent;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
-import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMethod;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
@@ -123,8 +123,8 @@ class ClassFileAttributesTest {
                         Optional.empty(), Visibility.Public.INSTANCE, Arity.Fixed.INSTANCE, Origin.Declared.INSTANCE,
                         new Annotations(List.of()), new ParameterAnnotations(List.of()))),
                 values(plain, Constructor.INSTANCE, ConstructorValue.class));
-        assertEquals(new Entry.ZeroOrOne(StaticInitialiser.INSTANCE, Optional.empty()),
-                plain.entry(StaticInitialiser.INSTANCE));
+        assertEquals(new WithSource<>(ClassInitialisation.None.INSTANCE, new ProcessedSource.Unavailable<>()),
+                ClassFileAttributes.INSTANCE.initialisation(Plain.class), "no code runs to initialise it");
         for (final ObjectKind none : List.of(StaticField.INSTANCE, Field.INSTANCE, Method.Implementation.INSTANCE,
                 StaticMethod.Implementation.INSTANCE, StaticMemberClass.INSTANCE, MemberClass.INSTANCE,
                 ClassAnnotation.INSTANCE, TypeParameter.INSTANCE)) {
@@ -160,7 +160,8 @@ class ClassFileAttributesTest {
         final String name = Enclosing.class.getName();
         assertEquals(List.of(new EnclosedClass(new ClassName(name + "$1InConstructor"),
                         new Enclosure.InConstructor(new Parameters(List.of())),
-                        values(enclosing, LocalClass.INSTANCE, EnclosedClass.class).getFirst().attributes())),
+                        values(enclosing, LocalClass.INSTANCE, EnclosedClass.class).getFirst().attributes(),
+                        values(enclosing, LocalClass.INSTANCE, EnclosedClass.class).getFirst().initialisation())),
                 values(enclosing, LocalClass.INSTANCE, EnclosedClass.class));
         final List<EnclosedClass> anonymous = values(enclosing, AnonymousClass.INSTANCE, EnclosedClass.class);
         assertEquals(List.of(new ClassName(name + "$1")), anonymous.stream().map(EnclosedClass::name).toList(),
@@ -405,7 +406,9 @@ class ClassFileAttributesTest {
         assertEquals(List.of("values", "valueOf"),
                 values(anEnum, StaticMethod.Implementation.INSTANCE, MethodValue.class).stream()
                         .map(MethodValue::name).filter(name -> !name.startsWith("$")).toList());
-        assertTrue(anEnum.entry(StaticInitialiser.INSTANCE) instanceof Entry.One, "an enum has exactly one");
+        assertEquals(ClassInitialisation.Code.INSTANCE,
+                ClassFileAttributes.INSTANCE.initialisation(AnEnum.class).object(),
+                "an enum's constants are made when it is initialised");
     }
 
     @Test

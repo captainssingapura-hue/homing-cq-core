@@ -9,7 +9,7 @@ import java.util.Collection;
  *     <li>type parameter: {@code T}; superclass: {@link SampleAbstractClass}, given {@code T}; superinterface:
  *     {@link Runnable}</li>
  *     <li>constructors: three, one of them generic, with a type parameter bounded by {@code T}, and taking an array
- *     of it; static initialiser: the static block</li>
+ *     of it</li>
  *     <li>class object - fields: {@code KIND} and {@code OK}; implementations: {@code of}, and {@code count}, which
  *     takes a collection of {@code ?}; native implementation: {@code clock}; member classes: {@code Builder} and
  *     {@code Special}</li>
@@ -20,6 +20,7 @@ import java.util.Collection;
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
  *     nesting, a permitted subclass ({@code Special}) and an inlined constant ({@link HttpURLConnection#HTTP_OK})</li>
  * </ul>
+ * <p>Beside them, and no object of the taxonomy, how it is initialised: here its static block.</p>
  */
 @SampleAnnotation("class")
 public sealed class SampleClass<T> extends SampleAbstractClass<T> implements Runnable permits SampleClass.Special {

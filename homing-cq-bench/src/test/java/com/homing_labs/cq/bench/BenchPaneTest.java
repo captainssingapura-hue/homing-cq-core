@@ -46,7 +46,9 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -219,6 +221,47 @@ class BenchPaneTest {
         assertEquals(List.of(List.of("public static final Enum INSTANCE = new Enum();"), List.of(),
                 List.of("StaticField of ClassKind$Enum: written where highlighted.")), field,
                 "a member type's body is read too");
+    }
+
+    @Test
+    void theClassObjectShowsHowEachClassIsInitialisedApartFromItsPartsAndTheSourceHighlightsAStep() {
+        final ClassObjectView classObject = FxThread.INSTANCE.call(ClassObjectView::new);
+        final SourceView source = FxThread.INSTANCE.call(SourceView::new);
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(classObject), source));
+        final List<ClassObjectView.Step> steps = FxThread.INSTANCE.call(() -> {
+            select(bench, "ClassKind");
+            return classObject.steps();
+        });
+        assertEquals(new ClassObjectView.Step("ClassKind", "-",
+                "No code runs: its static fields are constants, or keep their defaults"), steps.getFirst());
+        assertEquals(Set.of("INSTANCE = new Class()", "INSTANCE = new AbstractClass()", "INSTANCE = new Interface()",
+                        "INSTANCE = new Enum()", "INSTANCE = new Record()", "INSTANCE = new Annotation()"),
+                steps.stream().skip(1).map(ClassObjectView.Step::code).collect(Collectors.toSet()),
+                "each member class's own");
+        assertTrue(steps.stream().skip(1)
+                .allMatch(step -> step.kind().equals("InitialValue")), steps.toString());
+        assertTrue(FxThread.INSTANCE.call(() -> classObject.lines().stream()
+                .noneMatch(line -> line.object().getSimpleName().contains("Initialis"))), "no part of a class");
+        final List<List<String>> highlighted = FxThread.INSTANCE.call(() -> {
+            initialisation(bench).getSelectionModel().select(steps.indexOf(steps.stream()
+                    .filter(step -> step.type().equals("ClassKind$Enum")).findFirst().orElseThrow()));
+            return List.of(source.written(), List.of(source.placed()));
+        });
+        assertEquals(List.of(List.of("INSTANCE = new Enum()"),
+                List.of("How ClassKind$Enum is initialised: a step, written where highlighted.")), highlighted);
+        assertEquals("ClassKind runs no code to be initialised: its static fields are constants, or keep their"
+                + " defaults.", FxThread.INSTANCE.call(() -> {
+                    initialisation(bench).getSelectionModel().select(0);
+                    return source.placed();
+                }));
+        assertEquals("6 values of StaticMemberClass of ClassKind: 6 written where highlighted.",
+                FxThread.INSTANCE.call(() -> {
+                    summary(bench).getSelectionModel().select(summary(bench).getItems().stream()
+                            .filter(line -> line.object() == StaticMemberClass.class)
+                            .findFirst().orElseThrow());
+                    return source.placed();
+                }), "selecting a part again leaves the initialisation");
+        assertEquals(-1, FxThread.INSTANCE.call(() -> initialisation(bench).getSelectionModel().getSelectedIndex()));
     }
 
     @Test
@@ -474,8 +517,9 @@ class BenchPaneTest {
         for (final Class<?> type : List.of(ClasspathUnits.class, Selection.class, IndexEntry.class,
                 IndexEntry.Package.class, IndexEntry.OfClass.class, UnitTree.class, NestIndex.class,
                 BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
-                SourceView.class, SourceLines.class, SourceLines.Line.class, Focus.class, Focus.OfClass.class,
-                Focus.OfValues.class, ClasspathEnforcers.class, RulesView.class, RulesView.Applied.class,
+                ClassObjectView.Step.class, SourceView.class, SourceLines.class, SourceLines.Line.class, Focus.class,
+                Focus.OfClass.class, Focus.OfValues.class, Focus.OfInitialisation.class, ClasspathEnforcers.class,
+                RulesView.class, RulesView.Applied.class,
                 IndexCell.class, ClassAttributes.class, UnitClasses.class, ValueText.class, TaxonomyView.class,
                 Badge.class, Badges.class, Existence.TopLevel.class, Existence.StaticMember.class,
                 Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class,
@@ -511,6 +555,10 @@ class BenchPaneTest {
 
     private TableView<?> details(final LaidOut bench) {
         return (TableView<?>) bench.root().lookup("#details");
+    }
+
+    private TableView<?> initialisation(final LaidOut bench) {
+        return (TableView<?>) bench.root().lookup("#initialisation");
     }
 
     /** A line of the summary for {@code ClassKind.Enum}, a record. */

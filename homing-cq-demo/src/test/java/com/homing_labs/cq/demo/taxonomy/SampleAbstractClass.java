@@ -8,7 +8,7 @@ import java.util.function.Supplier;
  * <ul>
  *     <li>type parameter: {@code T}; superclass: {@link Object}, which its source does not name; superinterface:
  *     {@link SampleInterface}, given {@code T}</li>
- *     <li>constructor: one, which declares what it throws; static initialiser: the static block</li>
+ *     <li>constructor: one, which declares what it throws</li>
  *     <li>class object - fields: {@code PREFIX} and {@code OK}; implementation: {@code prefixed}; native
  *     implementation: {@code ticks}; member class: {@code Registry}</li>
  *     <li>instances - field: {@code id}; declaration: {@code size}; implementations: {@code label}, and
@@ -20,6 +20,7 @@ import java.util.function.Supplier;
  *     nesting, a permitted subclass ({@link SampleClass}) and an inlined constant
  *     ({@link HttpURLConnection#HTTP_OK})</li>
  * </ul>
+ * <p>Beside them, and no object of the taxonomy, how it is initialised: here its static block.</p>
  */
 @SampleAnnotation("abstract class")
 public abstract sealed class SampleAbstractClass<T> implements SampleInterface<T> permits SampleClass {

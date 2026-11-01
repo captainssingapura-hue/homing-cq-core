@@ -8,6 +8,7 @@ import com.homing_labs.cq.lang.java.lexer.TokenKind;
 import com.homing_labs.cq.lang.java.lexer.TokenStream;
 import com.homing_labs.cq.lang.java.model.AppliedAnnotation;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.CodeBlocks;
 import com.homing_labs.cq.lang.java.model.ConstructorSignature;
@@ -19,7 +20,8 @@ import com.homing_labs.cq.lang.java.model.Entry;
 import com.homing_labs.cq.lang.java.model.EnumConstantValue;
 import com.homing_labs.cq.lang.java.model.Extensibility;
 import com.homing_labs.cq.lang.java.model.FieldValue;
-import com.homing_labs.cq.lang.java.model.InitialiserValue;
+import com.homing_labs.cq.lang.java.model.InitialisationStep;
+import com.homing_labs.cq.lang.java.model.InitialisationSteps;
 import com.homing_labs.cq.lang.java.model.MethodSignature;
 import com.homing_labs.cq.lang.java.model.MethodValue;
 import com.homing_labs.cq.lang.java.model.NestedClass;
@@ -87,9 +89,9 @@ import java.util.stream.Stream;
  * <p>The outline reads a top-level type down to the parts of its body, and its member types' bodies so too, one level
  * down; a type nested deeper is read down to its header, and a method's body is left as tokens. What is written in
  * those is written within them, not exactly. What the compiler implies or generates is written nowhere. javac puts
- * some objects together from several parts of the source: the static initialiser from every static block and every
- * static field's initial value that is no constant, and each constructor that hands over to no other runs the instance
- * initialisers and the instance fields' initial values too.</p>
+ * some things together from several parts of the source: how a class is initialised, in steps, from its enum constants,
+ * its static blocks and its static fields' initial values that are no constants; and each constructor that hands over
+ * to no other runs the instance initialisers and the instance fields' initial values too.</p>
  */
 public record SourceLocator() implements StatelessFunctionalObject {
 
@@ -105,13 +107,19 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /**
-     * The unit's attributes, each value with its source processed - those of the classes nested in it too. A unit read
-     * without its source keeps its attributes as they are, every value's source unavailable.
+     * The unit's attributes, each value with its source processed - those of the classes nested in it too - from its
+     * source, as {@link #outline} outlines it.
      */
-    public Attributes sourced(final JavaUnit unit) {
-        return outline(unit)
-                .map(outline -> sourced(reading(unit, outline), unit.identity().name(), unit.attributes()))
-                .orElse(unit.attributes());
+    public Attributes sourced(final JavaUnit unit, final Outline outline) {
+        return sourced(reading(unit, outline), unit.identity().name(), unit.attributes());
+    }
+
+    /**
+     * How the unit's top-level class is initialised, with its source: the steps its body writes, in order - from its
+     * source, as {@link #outline} outlines it.
+     */
+    public WithSource<ClassInitialisation> initialisation(final JavaUnit unit, final Outline outline) {
+        return initialisation(reading(unit, outline), unit.identity().name(), unit.initialisation());
     }
 
     /** Where the unit's top-level class is declared: from its documentation comment to its closing brace. */
@@ -139,10 +147,12 @@ public record SourceLocator() implements StatelessFunctionalObject {
                                                  final ObjectKind object, final Scalar value) {
         return switch (value) {
             case NestedClass nested -> new WithSource<>(
-                    new NestedClass(nested.name(), sourced(reading, nested.name(), nested.attributes())),
+                    new NestedClass(nested.name(), sourced(reading, nested.name(), nested.attributes()),
+                            initialisation(reading, nested.name(), nested.initialisation())),
                     nestedClass(inClass, where, nested));
             case EnclosedClass enclosed -> new WithSource<>(new EnclosedClass(enclosed.name(), enclosed.enclosure(),
-                    sourced(reading, enclosed.name(), enclosed.attributes())),
+                    sourced(reading, enclosed.name(), enclosed.attributes()),
+                    initialisation(reading, enclosed.name(), enclosed.initialisation())),
                     inBody(where, (declared, body) -> new ProcessedSource.Within<>(
                             enclosing(reading, inClass, declared, body, enclosed.enclosure()))));
             case FieldValue field -> new WithSource<>(field, inBody(where, (declared, body) -> field(body, field)));
@@ -152,8 +162,6 @@ public record SourceLocator() implements StatelessFunctionalObject {
                     new WithSource<>(method, inBody(where, (declared, body) -> method(body, method)));
             case ConstructorValue constructor -> new WithSource<>(constructor,
                     inBody(where, (declared, body) -> constructor(declared, body, constructor)));
-            case InitialiserValue initialiser -> new WithSource<>(initialiser,
-                    inBody(where, (declared, body) -> initialiser(reading, inClass, declared, body, initialiser)));
             case Visibility visibility -> new WithSource<>(visibility, inHeader(where, this::visibility));
             case Extensibility extensibility -> new WithSource<>(extensibility,
                     inHeader(where, declared -> extensibility(declared, extensibility)));
@@ -284,16 +292,26 @@ public record SourceLocator() implements StatelessFunctionalObject {
                 .stream().findFirst();
     }
 
-    private ProcessedSource<InitialiserValue> initialiser(final Reading reading, final ClassName inClass,
-                                                          final Declared declared, final Body body,
-                                                          final InitialiserValue value) {
-        if (generated(value.origin())) {
-            return new ProcessedSource.Unwritten<>();
-        }
-        final List<TokenRange> found = staticInitialisers(body.lexed(), declared.header(), body.parts(),
+    /**
+     * How a class of the unit is initialised, with its source: the steps its body writes - nothing, when no code runs,
+     * or when all that runs the compiler wrote, as a class's that only sets up its {@code assert}s.
+     */
+    private WithSource<ClassInitialisation> initialisation(final Reading reading, final ClassName inClass,
+                                                           final WithSource<ClassInitialisation> read) {
+        final ProcessedSource<ClassInitialisation> source = switch (read.object()) {
+            case ClassInitialisation.None _ -> new ProcessedSource.Unwritten<>();
+            case ClassInitialisation.Code _ -> inBody(found(reading, inClass),
+                    (declared, body) -> steps(reading, inClass, declared, body));
+        };
+        return new WithSource<>(read.object(), source);
+    }
+
+    private ProcessedSource<ClassInitialisation> steps(final Reading reading, final ClassName inClass,
+                                                       final Declared declared, final Body body) {
+        final List<InitialisationStep> steps = staticInitialisers(body.lexed(), declared.header(), body.parts(),
                 constants(reading.unit, inClass));
-        return found.isEmpty() ? new ProcessedSource.Unwritten<>()
-                : new ProcessedSource.OfInitialiser(blocks(body.lexed(), found));
+        return steps.isEmpty() ? new ProcessedSource.Unwritten<>()
+                : new ProcessedSource.OfInitialisation(new InitialisationSteps(steps));
     }
 
     /** A member class, as the body of the class it is a member of declares it. */
@@ -467,25 +485,25 @@ public record SourceLocator() implements StatelessFunctionalObject {
     private CodeBlocks enclosing(final Reading reading, final ClassName inClass, final Declared declared,
                                  final Body body, final Enclosure enclosure) {
         final Lexed lexed = body.lexed();
-        final List<TokenRange> found = switch (enclosure) {
+        final CodeBlocks found = switch (enclosure) {
             case Enclosure.InMethod method when method.name().startsWith(LAMBDA) ->
                     inLambda(reading, inClass, declared, body, method.name());
-            case Enclosure.InMethod method -> values(reading, inClass, MethodValue.class)
+            case Enclosure.InMethod method -> blocks(lexed, values(reading, inClass, MethodValue.class)
                     .filter(value -> value.name().equals(method.name())
                             && value.parameters().equals(method.parameters()))
                     .flatMap(value -> written(body, value).stream())
                     .map(Candidate::range)
                     .limit(1)
-                    .toList();
-            case Enclosure.InConstructor constructor -> values(reading, inClass, ConstructorValue.class)
+                    .toList());
+            case Enclosure.InConstructor constructor -> blocks(lexed, values(reading, inClass, ConstructorValue.class)
                     .filter(value -> value.parameters().equals(constructor.parameters()))
                     .flatMap(value -> written(declared, body, value).stream())
                     .map(Candidate::range)
                     .limit(1)
-                    .toList();
-            case Enclosure.InInitialiser _ -> initialisers(lexed, body.parts());
+                    .toList());
+            case Enclosure.InInitialiser _ -> blocks(lexed, initialisers(lexed, body.parts()));
         };
-        return found.isEmpty() ? blocks(declared.lexed(), List.of(declared.declaration())) : blocks(lexed, found);
+        return found.items().isEmpty() ? blocks(declared.lexed(), List.of(declared.declaration())) : found;
     }
 
     /** The values of a kind that a class of the unit holds, as its class file has them. */
@@ -509,16 +527,17 @@ public record SourceLocator() implements StatelessFunctionalObject {
      * Where javac's method for a lambda was written: {@code lambda$name$0} is in the method of that name,
      * {@code lambda$new$0} in a constructor or an instance initialiser, {@code lambda$static$0} in a static one.
      */
-    private List<TokenRange> inLambda(final Reading reading, final ClassName inClass, final Declared declared,
-                                      final Body body, final String name) {
+    private CodeBlocks inLambda(final Reading reading, final ClassName inClass, final Declared declared,
+                                final Body body, final String name) {
         final Lexed lexed = body.lexed();
         final TypeHeader header = declared.header();
         final String in = name.substring(LAMBDA.length(), Math.max(LAMBDA.length(), name.lastIndexOf('$')));
         return switch (in) {
-            case "new" -> Stream.concat(ranges(constructors(declared, body)).stream(),
-                    instanceInitialisers(lexed, header, body.parts()).stream()).toList();
-            case "static" -> staticInitialisers(lexed, header, body.parts(), constants(reading.unit, inClass));
-            default -> ranges(methods(lexed, body.parts(), in));
+            case "new" -> blocks(lexed, Stream.concat(ranges(constructors(declared, body)).stream(),
+                    instanceInitialisers(lexed, header, body.parts()).stream()).toList());
+            case "static" -> new CodeBlocks(staticInitialisers(lexed, header, body.parts(),
+                    constants(reading.unit, inClass)).stream().map(InitialisationStep::block).toList());
+            default -> blocks(lexed, ranges(methods(lexed, body.parts(), in)));
         };
     }
 
@@ -730,21 +749,24 @@ public record SourceLocator() implements StatelessFunctionalObject {
     }
 
     /**
-     * What javac puts the static initialiser together from, in the order written: an enum's constants, the static
+     * The steps javac puts the static initialiser together from, in the order written: an enum's constants, the static
      * blocks, and the static fields' initial values, but for the constants'.
      */
-    private List<TokenRange> staticInitialisers(final Lexed lexed, final TypeHeader header, final BodyParts parts,
-                                                final Set<String> constants) {
-        final List<TokenRange> found = new ArrayList<>();
+    private List<InitialisationStep> staticInitialisers(final Lexed lexed, final TypeHeader header,
+                                                        final BodyParts parts, final Set<String> constants) {
+        final List<InitialisationStep> found = new ArrayList<>();
         for (final BodyPart part : parts.items()) {
             switch (part) {
-                case BodyPart.EnumConstant constant -> found.add(trimmed(lexed, constant.range(), true));
-                case BodyPart.Initializer initializer when initializer.isStatic() ->
-                        found.add(trimmed(lexed, initializer.range(), false));
+                case BodyPart.EnumConstant constant -> found.add(new InitialisationStep.EnumConstant(
+                        constant.name().text(), block(lexed, trimmed(lexed, constant.range(), true))));
+                case BodyPart.Initializer initializer when initializer.isStatic() -> found.add(
+                        new InitialisationStep.StaticBlock(block(lexed, trimmed(lexed, initializer.range(), false))));
                 case BodyPart.Field field when isStatic(header, field) -> field.declarators().items().stream()
                         .filter(declarator -> declarator.initializer().isPresent()
                                 && !constants.contains(declarator.name().text()))
-                        .forEach(declarator -> found.add(declarator.range()));
+                        .forEach(declarator -> found.add(new InitialisationStep.InitialValue(
+                                declarator.name().text(), block(lexed, declarator.range()),
+                                block(lexed, declarator.initializer().orElseThrow()))));
                 default -> {
                 }
             }

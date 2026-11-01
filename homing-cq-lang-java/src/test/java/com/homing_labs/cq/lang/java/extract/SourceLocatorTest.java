@@ -2,6 +2,7 @@ package com.homing_labs.cq.lang.java.extract;
 
 import com.homing_labs.cq.lang.java.fixtures.Plain;
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.CodeBlocks;
 import com.homing_labs.cq.lang.java.model.ConstructorValue;
@@ -9,6 +10,7 @@ import com.homing_labs.cq.lang.java.model.EnclosedClass;
 import com.homing_labs.cq.lang.java.model.Entry;
 import com.homing_labs.cq.lang.java.model.EnumConstantValue;
 import com.homing_labs.cq.lang.java.model.FieldValue;
+import com.homing_labs.cq.lang.java.model.InitialisationStep;
 import com.homing_labs.cq.lang.java.model.MethodValue;
 import com.homing_labs.cq.lang.java.model.NestedClass;
 import com.homing_labs.cq.lang.java.model.Origin;
@@ -34,7 +36,6 @@ import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.RecordComponent;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
-import com.homing_labs.cq.lang.java.taxonomy.StaticInitialiser;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMethod;
 import com.homing_labs.cq.lang.java.taxonomy.Superclass;
@@ -80,7 +81,7 @@ class SourceLocatorTest {
     @Test
     void everyBlockIsCopiedFromWhereItIsInTheFile() {
         final String text = unit(Placed.class).source().orElseThrow().text();
-        final List<CodeBlock> blocks = blocks(unit(Placed.class).attributes());
+        final List<CodeBlock> blocks = blocks(unit(Placed.class));
         assertTrue(blocks.size() > 40, blocks.size() + " blocks");
         for (final CodeBlock block : blocks) {
             assertEquals(block.text(), text.substring(block.offset(), block.offset() + block.text().length()));
@@ -193,11 +194,35 @@ class SourceLocatorTest {
     }
 
     @Test
-    void theStaticInitialiserIsTheStaticBlocksAndTheValuesThatAreNoConstants() {
-        final ProcessedSource.OfInitialiser initialiser = assertInstanceOf(ProcessedSource.OfInitialiser.class,
-                sourceOf(Placed.class, StaticInitialiser.INSTANCE, any -> true));
+    void aClassIsInitialisedInStepsTheStaticBlocksAndTheInitialValuesThatAreNoConstants() {
+        final List<InitialisationStep> steps = steps(Placed.class, new ClassName(Placed.class.getName()));
         assertEquals(List.of("counted = count()", "BOXED = 3", "COPIED = counted", "static { counted++; }"),
-                texts(initialiser.blocks()));
+                texts(steps));
+        assertEquals(List.of(InitialisationStep.InitialValue.class, InitialisationStep.InitialValue.class,
+                        InitialisationStep.InitialValue.class, InitialisationStep.StaticBlock.class),
+                steps.stream().map(Object::getClass).toList());
+        final InitialisationStep.InitialValue counted = (InitialisationStep.InitialValue) steps.getFirst();
+        assertEquals("counted", counted.field());
+        assertEquals("count()", counted.value().text());
+        assertEquals(ClassInitialisation.Code.INSTANCE, unit(Placed.class).initialisation().object());
+    }
+
+    @Test
+    void aClassThatRunsNoCodeOrOnlyTheCompilersHasNoStepsWrittenAndOneNotReadHasThemWithin() {
+        assertEquals(new WithSource<>(ClassInitialisation.None.INSTANCE, new ProcessedSource.Unwritten<>()),
+                initialisation(Placed.class, name("Placed$Member")), "no code runs");
+        assertEquals(new WithSource<>(ClassInitialisation.Code.INSTANCE, new ProcessedSource.Unwritten<>()),
+                initialisation(PlacedInitialisation.class, name("PlacedInitialisation")),
+                "javac sets up its assert, and the source writes nothing");
+        final WithSource<ClassInitialisation> counter = initialisation(PlacedInitialisation.class,
+                name("PlacedInitialisation$1Counter"));
+        assertEquals(ClassInitialisation.Code.INSTANCE, counter.object());
+        final List<String> within = within(counter.source());
+        assertEquals(1, within.size());
+        assertTrue(within.getFirst().startsWith("/** A local class whose static field's value is computed. */"
+                + " Object counter()"), within.getFirst());
+        assertEquals(new WithSource<>(ClassInitialisation.Code.INSTANCE, new ProcessedSource.Unavailable<>()),
+                JavaUnits.INSTANCE.of(Placed.class, Optional.empty()).initialisation(), "read without its source");
     }
 
     @Test
@@ -217,8 +242,7 @@ class SourceLocatorTest {
                 Constructor.INSTANCE, any -> true);
         assertEquals("Inner(final int count) { this.count = count; }", squashed(constructor.block()));
         assertEquals(List.of("count"), names(constructor.parameters()));
-        assertEquals(List.of("made = LIMIT + count()"), texts(assertInstanceOf(ProcessedSource.OfInitialiser.class,
-                sourceOf(Placed.class, name("Placed$Inner"), StaticInitialiser.INSTANCE, any -> true)).blocks()),
+        assertEquals(List.of("made = LIMIT + count()"), texts(steps(Placed.class, name("Placed$Inner"))),
                 "its own constants are left out");
     }
 
@@ -241,7 +265,7 @@ class SourceLocatorTest {
     }
 
     @Test
-    void anEnumMakesItsConstantsInItsStaticInitialiserAndItsConstructorsTakeTwoParametersMore() {
+    void anEnumMakesItsConstantsWhenItIsInitialisedAndItsConstructorsTakeTwoParametersMore() {
         final String two = "TWO(\"two\") { @Override String label() { return \"second\"; } }";
         final ProcessedSource.OfEnumConstant one = constant("ONE");
         assertEquals("ONE", one.block().text());
@@ -250,9 +274,10 @@ class SourceLocatorTest {
         assertEquals(two, squashed(second.block()));
         assertEquals(Optional.of("(\"two\")"), second.arguments().map(CodeBlock::text));
         assertTrue(second.body().isPresent());
-        assertEquals(List.of("ONE", two), assertInstanceOf(ProcessedSource.OfInitialiser.class,
-                sourceOf(PlacedEnum.class, StaticInitialiser.INSTANCE, any -> true)).blocks().items().stream()
-                .map(this::squashed).toList());
+        final List<InitialisationStep> made = steps(PlacedEnum.class, new ClassName(PlacedEnum.class.getName()));
+        assertEquals(List.of("ONE", two), texts(made));
+        assertEquals(List.of("ONE", "TWO"), made.stream()
+                .map(step -> ((InitialisationStep.EnumConstant) step).name()).toList());
         assertEquals("PlacedEnum() { this(\"one\"); }", squashed(constructor(PlacedEnum.class,
                 Constructor.INSTANCE, parameters(2)).block()));
         final ProcessedSource.OfConstructor labelled = constructor(PlacedEnum.class, Constructor.INSTANCE,
@@ -446,14 +471,51 @@ class SourceLocatorTest {
                 }));
     }
 
-    /** Every block the values of a class and of the classes nested in it are written in. */
-    private List<CodeBlock> blocks(final Attributes attributes) {
-        return values(attributes).flatMap(value -> switch (value.source()) {
-            case ProcessedSource.Written<?> written -> Stream.of(written.block());
-            case ProcessedSource.OfInitialiser initialiser -> initialiser.blocks().items().stream();
-            case ProcessedSource.Within<?> within -> within.blocks().items().stream();
-            default -> Stream.empty();
-        }).toList();
+    /**
+     * Every block a unit's classes are written in: where each of their values is, and how each of them - the top-level
+     * class and those nested in it - is initialised.
+     */
+    private List<CodeBlock> blocks(final JavaUnit unit) {
+        final Stream<ProcessedSource<?>> initialisations = Stream.concat(Stream.of(unit.initialisation()),
+                values(unit.attributes()).flatMap(value -> switch (value.object()) {
+                    case NestedClass nested -> Stream.of(nested.initialisation());
+                    case EnclosedClass enclosed -> Stream.of(enclosed.initialisation());
+                    default -> Stream.empty();
+                })).map(WithSource::source);
+        return Stream.concat(initialisations, values(unit.attributes()).<ProcessedSource<?>>map(WithSource::source))
+                .flatMap(source -> switch (source) {
+                    case ProcessedSource.Written<?> written -> Stream.of(written.block());
+                    case ProcessedSource.OfInitialisation initialisation -> initialisation.steps().items().stream()
+                            .flatMap(step -> step instanceof InitialisationStep.InitialValue initial
+                                    ? Stream.of(initial.block(), initial.value()) : Stream.of(step.block()));
+                    case ProcessedSource.Within<?> within -> within.blocks().items().stream();
+                    default -> Stream.empty();
+                }).toList();
+    }
+
+    /** How a class of a unit is initialised: its top-level class, or a class nested in it at any depth. */
+    private WithSource<ClassInitialisation> initialisation(final Class<?> type, final ClassName inClass) {
+        final JavaUnit unit = unit(type);
+        return inClass.equals(unit.identity().name()) ? unit.initialisation() : values(unit.attributes())
+                .flatMap(value -> switch (value.object()) {
+                    case NestedClass nested when nested.name().equals(inClass) -> Stream.of(nested.initialisation());
+                    case EnclosedClass enclosed when enclosed.name().equals(inClass) ->
+                            Stream.of(enclosed.initialisation());
+                    default -> Stream.empty();
+                })
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("no class " + inClass + " in " + type.getName()));
+    }
+
+    /** The steps a class of a unit is initialised in, as written. */
+    private List<InitialisationStep> steps(final Class<?> type, final ClassName inClass) {
+        return assertInstanceOf(ProcessedSource.OfInitialisation.class, initialisation(type, inClass).source())
+                .steps().items();
+    }
+
+    /** The steps' blocks, each on a line. */
+    private List<String> texts(final List<InitialisationStep> steps) {
+        return steps.stream().map(step -> squashed(step.block())).toList();
     }
 
     private ProcessedSource.OfField field(final Class<?> type, final ObjectKind object, final String name) {

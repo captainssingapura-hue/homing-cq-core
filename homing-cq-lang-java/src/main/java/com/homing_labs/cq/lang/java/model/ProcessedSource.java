@@ -8,10 +8,10 @@ import java.util.Optional;
 /**
  * What the source says of a value of the model, by the kind of value it is. A value written in a block of code has the
  * block, copied out of the file, and what the source tells of the value there that the class file does not - a
- * method's documentation comment, its parameters' names and its body, say. The static initialiser is written in
- * several blocks, which javac puts it together from. A value the source writes no block of has a source all the same,
- * saying why: it is written somewhere inside code not read yet, or nowhere, or it is not looked for, or its unit was
- * read without its source file.
+ * method's documentation comment, its parameters' names and its body, say. How a class is initialised is written in
+ * several steps, which javac puts its static initialiser together from. A value the source writes no block of has a
+ * source all the same, saying why: it is written somewhere inside code not read yet, or nowhere, or it is not looked
+ * for, or its unit was read without its source file.
  *
  * @param <T> the kind of value
  */
@@ -84,10 +84,10 @@ public sealed interface ProcessedSource<T extends Scalar> extends Scalar {
     }
 
     /**
-     * The static initialiser: the blocks javac puts it together from, in the order written - an enum's constants, the
-     * static blocks, and the static fields' initial values but the constants'.
+     * How the class is initialised: the steps javac puts its static initialiser together from, in the order written -
+     * an enum's constants, the static blocks, and the static fields' initial values but the constants'.
      */
-    record OfInitialiser(CodeBlocks blocks) implements ProcessedSource<InitialiserValue> {
+    record OfInitialisation(InitialisationSteps steps) implements ProcessedSource<ClassInitialisation> {
     }
 
     /**
@@ -99,7 +99,9 @@ public sealed interface ProcessedSource<T extends Scalar> extends Scalar {
 
     /**
      * Written nowhere: the compiler implied or generated it - an enum's {@code values()}, a record's accessors, a
-     * default constructor, a bridge method - or the source is not the one the class was compiled from.
+     * default constructor, a bridge method, a class's initialisation that only sets up its {@code assert}s - or it is
+     * nothing to write, as a class's initialisation that runs no code, or the source is not the one the class was
+     * compiled from.
      */
     record Unwritten<T extends Scalar>() implements ProcessedSource<T> {
     }

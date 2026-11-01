@@ -7,18 +7,20 @@ import java.util.function.IntSupplier;
  * An enum with every object of the taxonomy an enum can have:
  * <ul>
  *     <li>superclass: {@link Enum}, which its source does not name; superinterface: {@link IntSupplier}</li>
- *     <li>constructor: one; static initialiser: the one every enum has, here with a static block too</li>
+ *     <li>constructor: one</li>
  *     <li>class object - fields: the constants {@code FIRST} and {@code SECOND}, {@code COUNT} and {@code OK};
  *     implementations: {@code named}, beside {@code values} and {@code valueOf}; native implementation:
  *     {@code seed}; member class: {@code Table}</li>
  *     <li>instances - field: {@code order}; declaration: {@code weight}, which each constant's body implements;
  *     implementation: {@code getAsInt}; native implementation: {@code code}; member class: {@code Slot}</li>
  *     <li>in its code - local class: the record {@code Wanted}, in {@code named}; anonymous classes: the constants'
- *     bodies, made by the static initialiser</li>
+ *     bodies, made when the enum is initialised</li>
  *     <li>dependencies - in signatures, an annotation ({@link SampleAnnotation}), in code, in local variables, in
  *     nesting, permitted subclasses (the constants' bodies) and an inlined constant
  *     ({@link HttpURLConnection#HTTP_OK})</li>
  * </ul>
+ * <p>Beside them, and no object of the taxonomy, how it is initialised: making its constants, as every enum's
+ * is, and here a static block too.</p>
  */
 @SampleAnnotation("enum")
 public enum SampleEnum implements IntSupplier {

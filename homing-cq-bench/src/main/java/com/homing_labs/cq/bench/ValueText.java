@@ -12,7 +12,7 @@ import com.homing_labs.cq.lang.java.model.EnclosedClass;
 import com.homing_labs.cq.lang.java.model.Enclosure;
 import com.homing_labs.cq.lang.java.model.EnumConstantValue;
 import com.homing_labs.cq.lang.java.model.FieldValue;
-import com.homing_labs.cq.lang.java.model.InitialiserValue;
+import com.homing_labs.cq.lang.java.model.InitialisationStep;
 import com.homing_labs.cq.lang.java.model.MethodSignature;
 import com.homing_labs.cq.lang.java.model.MethodValue;
 import com.homing_labs.cq.lang.java.model.NestedClass;
@@ -37,7 +37,8 @@ import java.util.stream.Collectors;
  * classifications in words - {@code size(): int - public, overridable, unsynchronised, fixed, declared}; a class by its
  * binary name, or, nested in the unit, without its package; a supertype or a type parameter as Java writes it; an
  * annotation as Java writes it, with where it is kept; a classification by itself - {@code sealed}. A member with a
- * generic signature is shown with its types as declared, not as they run.
+ * generic signature is shown with its types as declared, not as they run. A step of how a class is initialised is its
+ * code on one line.
  */
 public record ValueText() implements StatelessFunctionalObject {
 
@@ -76,7 +77,7 @@ public record ValueText() implements StatelessFunctionalObject {
                     .orElse(constructor.parameters()))
                     + thrown(constructor.signature().map(ConstructorSignature::thrown), constructor.thrown())
                     + " - " + words(constructor.visibility(), constructor.arity(), constructor.origin());
-            case InitialiserValue initialiser -> words(initialiser.origin());
+            case InitialisationStep step -> step.block().text().replaceAll("\\s+", " ");
             default -> word(value);
         };
     }

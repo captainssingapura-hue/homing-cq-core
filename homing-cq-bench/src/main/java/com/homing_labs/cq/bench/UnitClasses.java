@@ -1,6 +1,7 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.model.Attributes;
+import com.homing_labs.cq.lang.java.model.ClassInitialisation;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.EnclosedClass;
 import com.homing_labs.cq.lang.java.model.Entry;
@@ -14,9 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Every class of a unit with its attributes, read from the unit alone: the top-level class first, then each class
- * nested in it - members, and local and anonymous classes - each before the classes nested in it, in the order the
- * taxonomy declares their objects.
+ * Every class of a unit with its attributes and its initialisation, read from the unit alone: the top-level class
+ * first, then each class nested in it - members, and local and anonymous classes - each before the classes nested in
+ * it, in the order the taxonomy declares their objects.
  */
 public record UnitClasses() implements StatelessFunctionalObject {
 
@@ -25,17 +26,20 @@ public record UnitClasses() implements StatelessFunctionalObject {
     /** The classes of a unit, its top-level class first. */
     public List<ClassAttributes> of(final JavaUnit unit) {
         final List<ClassAttributes> classes = new ArrayList<>();
-        collect(unit.identity().name(), unit.attributes(), classes);
+        collect(unit.identity().name(), unit.attributes(), unit.initialisation(), classes);
         return List.copyOf(classes);
     }
 
-    private void collect(final ClassName name, final Attributes attributes, final List<ClassAttributes> into) {
-        into.add(new ClassAttributes(name, attributes));
+    private void collect(final ClassName name, final Attributes attributes,
+                         final WithSource<ClassInitialisation> initialisation, final List<ClassAttributes> into) {
+        into.add(new ClassAttributes(name, attributes, initialisation));
         for (final Entry entry : attributes.entries()) {
             for (final WithSource<? extends Scalar> value : entry.all()) {
                 switch (value.object()) {
-                    case NestedClass nested -> collect(nested.name(), nested.attributes(), into);
-                    case EnclosedClass enclosed -> collect(enclosed.name(), enclosed.attributes(), into);
+                    case NestedClass nested ->
+                            collect(nested.name(), nested.attributes(), nested.initialisation(), into);
+                    case EnclosedClass enclosed ->
+                            collect(enclosed.name(), enclosed.attributes(), enclosed.initialisation(), into);
                     default -> {
                     }
                 }
