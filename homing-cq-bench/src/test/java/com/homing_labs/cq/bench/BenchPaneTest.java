@@ -232,23 +232,29 @@ class BenchPaneTest {
             select(bench, "ClassKind");
             return classObject.steps();
         });
-        assertEquals(new ClassObjectView.Step("ClassKind", "-",
+        assertEquals(new ClassObjectView.Step("ClassKind", "ClassKind",
                 "No code runs: its static fields are constants, or keep their defaults"), steps.getFirst());
         assertEquals(Set.of("INSTANCE = new Class()", "INSTANCE = new AbstractClass()", "INSTANCE = new Interface()",
                         "INSTANCE = new Enum()", "INSTANCE = new Record()", "INSTANCE = new Annotation()"),
-                steps.stream().skip(1).map(ClassObjectView.Step::code).collect(Collectors.toSet()),
-                "each member class's own");
-        assertTrue(steps.stream().skip(1)
-                .allMatch(step -> step.kind().equals("InitialValue")), steps.toString());
+                steps.stream().filter(step -> step.kind().equals("InitialValue")).map(ClassObjectView.Step::code)
+                        .collect(Collectors.toSet()), "each member class's own");
+        final ClassObjectView.Step enumClass = new ClassObjectView.Step("ClassKind$Enum", "ClassKind$Enum",
+                "Code runs, in 1 step, written below");
+        assertEquals(new ClassObjectView.Step("ClassKind$Enum", "InitialValue", "INSTANCE = new Enum()"),
+                steps.get(steps.indexOf(enumClass) + 1), "a class is named on a row of its own, its steps below it");
+        assertEquals(13, steps.size(), "a row for each class, and one for each step");
         assertTrue(FxThread.INSTANCE.call(() -> classObject.lines().stream()
                 .noneMatch(line -> line.object().getSimpleName().contains("Initialis"))), "no part of a class");
         final List<List<String>> highlighted = FxThread.INSTANCE.call(() -> {
-            initialisation(bench).getSelectionModel().select(steps.indexOf(steps.stream()
-                    .filter(step -> step.type().equals("ClassKind$Enum")).findFirst().orElseThrow()));
-            return List.of(source.written(), List.of(source.placed()));
+            initialisation(bench).getSelectionModel().select(steps.indexOf(enumClass) + 1);
+            final List<String> step = List.of(source.placed());
+            initialisation(bench).getSelectionModel().select(steps.indexOf(enumClass));
+            return List.of(source.written(), step, List.of(source.placed()));
         });
         assertEquals(List.of(List.of("INSTANCE = new Enum()"),
-                List.of("How ClassKind$Enum is initialised: a step, written where highlighted.")), highlighted);
+                List.of("How ClassKind$Enum is initialised: a step, written where highlighted."),
+                List.of("How ClassKind$Enum is initialised: a step, written where highlighted.")), highlighted,
+                "a step alone, and the class's whole initialisation, here the same step");
         assertEquals("ClassKind runs no code to be initialised: its static fields are constants, or keep their"
                 + " defaults.", FxThread.INSTANCE.call(() -> {
                     initialisation(bench).getSelectionModel().select(0);

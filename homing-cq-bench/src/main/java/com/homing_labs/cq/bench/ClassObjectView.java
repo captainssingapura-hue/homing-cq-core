@@ -34,11 +34,12 @@ import java.util.function.Function;
 /**
  * The class object, as the selected unit holds it: the attributes of the class selected - or of every class of the
  * unit, when the unit itself is selected - in two parts, and how each is initialised apart from them. Above, a
- * summary: a line for each class, and one for each object the taxonomy lets a class of its kind have, with how many it
- * can have and how many it has. Below, the values: those of the summary line selected, or every one with no line
- * selected. The unit's attributes were held to the taxonomy when it was read, so every count fits its cardinality.
- * Last, the initialisation: each step a class's source writes for it, or why it has none. What is selected - a line, a
- * value, or a step - is what the source shows.
+ * summary: a line for each class, naming it and its kind, then one for each object the taxonomy lets a class of its
+ * kind have, with how many it can have and how many it has. Below, the values: those of the summary line selected, or
+ * every one with no line selected, each class's led by the class itself. The unit's attributes were held to the
+ * taxonomy when it was read, so every count fits its cardinality. Last, the initialisation: a line naming each class,
+ * with how it is initialised, then each step its source writes for it. What is selected - a line, a value, or a step
+ * - is what the source shows.
  */
 public final class ClassObjectView implements BenchView {
 
@@ -62,8 +63,7 @@ public final class ClassObjectView implements BenchView {
 
     public ClassObjectView() {
         summary.setId("summary");
-        summary.getColumns().add(column("Class", (Line line) -> shortName(line.inClass()), 200));
-        summary.getColumns().add(column("Object", (Line line) -> kindName(line.object()), 240));
+        summary.getColumns().add(column("Object", this::object, 400));
         summary.getColumns().add(column("Cardinality",
                 (Line line) -> line.cardinality().map(allowed -> allowed.getClass().getSimpleName()).orElse("-"), 110));
         summary.getColumns().add(column("Count", Line::count, 70));
@@ -76,7 +76,6 @@ public final class ClassObjectView implements BenchView {
             tell();
         });
         details.setId("details");
-        details.getColumns().add(column("Class", (Detail detail) -> detail.row().type(), 200));
         details.getColumns().add(column("Object", (Detail detail) -> detail.row().object(), 240));
         details.getColumns().add(column("Value", (Detail detail) -> detail.row().name(), 600));
         details.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
@@ -88,7 +87,6 @@ public final class ClassObjectView implements BenchView {
             tell();
         });
         initialisation.setId("initialisation");
-        initialisation.getColumns().add(column("Class", (Stage stage) -> stage.step().type(), 200));
         initialisation.getColumns().add(column("Step", (Stage stage) -> stage.step().kind(), 240));
         initialisation.getColumns().add(column("Code", (Stage stage) -> stage.step().code(), 600));
         initialisation.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
@@ -215,38 +213,45 @@ public final class ClassObjectView implements BenchView {
     }
 
     /**
-     * How each class selected is initialised: a row for each step its source writes, which selecting shows alone, or
-     * one saying why it has none.
+     * How each class selected is initialised: a row naming the class, with how it is initialised - which selecting
+     * shows whole - then a row for each step its source writes, which selecting shows alone.
      */
     private List<Stage> stages(final Selection selection) {
         final List<Stage> stages = new ArrayList<>();
         for (final ClassAttributes each : shown(selection)) {
             final String type = shortName(each.name().binaryName());
             final WithSource<ClassInitialisation> initialised = each.initialisation();
+            stages.add(new Stage(new Step(type, type, initialisation(initialised)),
+                    new Focus.OfInitialisation(each.name(), initialised)));
             if (initialised.source() instanceof ProcessedSource.OfInitialisation written) {
                 for (final InitialisationStep step : written.steps().items()) {
                     stages.add(new Stage(new Step(type, step.getClass().getSimpleName(), ValueText.INSTANCE.of(step)),
                             new Focus.OfInitialisation(each.name(), new WithSource<>(initialised.object(),
                                     new ProcessedSource.OfInitialisation(new InitialisationSteps(List.of(step)))))));
                 }
-            } else {
-                stages.add(new Stage(new Step(type, "-", unwritten(initialised)),
-                        new Focus.OfInitialisation(each.name(), initialised)));
             }
         }
         return stages;
     }
 
-    /** Why a class's initialisation has no steps written. */
-    private String unwritten(final WithSource<ClassInitialisation> initialised) {
+    /** How a class is initialised, in a line: in how many steps its source writes, or why it has none. */
+    private String initialisation(final WithSource<ClassInitialisation> initialised) {
         return switch (initialised.object()) {
             case ClassInitialisation.None _ -> "No code runs: its static fields are constants, or keep their defaults";
             case ClassInitialisation.Code _ -> switch (initialised.source()) {
+                case ProcessedSource.OfInitialisation written -> "Code runs, in " + written.steps().items().size()
+                        + (written.steps().items().size() == 1 ? " step" : " steps") + ", written below";
                 case ProcessedSource.Within<?> _ -> "Code runs, written somewhere in code not read yet";
                 case ProcessedSource.Unavailable<?> _ -> "Code runs; the unit was read without its source";
                 default -> "Code runs that the source does not write: the compiler's own";
             };
         };
+    }
+
+    /** What a summary line is of: an object of the taxonomy, or - on a class's own line - the class, and its kind. */
+    private String object(final Line line) {
+        return line.cardinality().isPresent() ? kindName(line.object())
+                : shortName(line.inClass()) + " (" + kindName(line.object()) + ")";
     }
 
     private List<Detail> details(final Optional<Line> line) {
@@ -287,7 +292,10 @@ public final class ClassObjectView implements BenchView {
     private record Detail(Row row, Focus focus) {
     }
 
-    /** A row of the initialisation: the class, the kind of step, and its code in a line - or why there is none. */
+    /**
+     * A row of the initialisation: the class it is of, then what it shows - the class itself, with how it is
+     * initialised, or a kind of step, with its code in a line.
+     */
     public record Step(String type, String kind, String code) implements Scalar {
     }
 
