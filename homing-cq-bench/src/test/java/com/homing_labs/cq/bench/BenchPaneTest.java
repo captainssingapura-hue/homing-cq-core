@@ -1,9 +1,14 @@
 package com.homing_labs.cq.bench;
 
+import com.homing_labs.cq.bench.rules.EveryUnitIsSeenEnforcer;
+import com.homing_labs.cq.bench.rules.InterfacesAreSeenEnforcer;
+import com.homing_labs.cq.enforcer.def.Enforcer;
+import com.homing_labs.cq.enforcer.def.Enforcers;
 import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.MethodValue;
 import com.homing_labs.cq.lang.java.model.Values;
+import com.homing_labs.cq.lang.java.unit.InterfaceUnit;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.unit.JavaUnits;
 import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
@@ -15,6 +20,7 @@ import com.homing_labs.cq.lang.java.taxonomy.LocalClass;
 import com.homing_labs.cq.lang.java.taxonomy.MemberOf;
 import com.homing_labs.cq.lang.java.taxonomy.Method;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
+import com.homing_labs.cq.lang.java.taxonomy.Placement;
 import com.homing_labs.cq.lang.java.taxonomy.StaticField;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.Superinterface;
@@ -33,6 +39,7 @@ import javafx.scene.control.TreeTableColumn;
 import javafx.scene.control.TreeTableView;
 import javafx.scene.control.TreeView;
 import javafx.scene.layout.HBox;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.Window;
 import org.junit.jupiter.api.BeforeAll;
@@ -44,6 +51,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -72,12 +80,63 @@ class BenchPaneTest {
     }
 
     @Test
-    void theUnitTreeHoldsEachPackageWithItsUnitsAndEndsAtThem() {
+    void theUnitTreeHasANodeForEachPartOfAPackageNameFromTheFirstAndEndsAtTheUnits() {
         final TreeView<IndexEntry> units = FxThread.INSTANCE.call(() -> tree(new LaidOut(List.of()), "#units"));
-        assertEquals(List.of(TAXONOMY, TAXONOMY + ".scan"), FxThread.INSTANCE.call(() -> labels(units.getRoot())));
-        assertTrue(FxThread.INSTANCE.call(() -> units.getRoot().getChildren().stream()
-                .flatMap(inPackage -> inPackage.getChildren().stream())
-                .allMatch(TreeItem::isLeaf)));
+        assertEquals(List.of("com"), FxThread.INSTANCE.call(() -> labels(units.getRoot())));
+        assertEquals(List.of("homing_labs"), FxThread.INSTANCE.call(() -> labels(at(units.getRoot(), "com"))));
+        final TreeItem<IndexEntry> taxonomy = FxThread.INSTANCE.call(() -> at(units.getRoot(), TAXONOMY));
+        assertEquals(TAXONOMY, ((IndexEntry.Package) taxonomy.getValue()).name());
+        assertEquals("taxonomy", taxonomy.getValue().toString());
+        assertEquals("scan", labels(taxonomy).getFirst(), "the packages below it come before its units");
+        assertTrue(FxThread.INSTANCE.call(() -> taxonomy.getChildren().stream().skip(1)
+                .allMatch(item -> item.getValue() instanceof IndexEntry.OfClass && item.isLeaf())));
+        assertTrue(FxThread.INSTANCE.call(() -> child(taxonomy, "scan").getChildren().stream()
+                .allMatch(item -> item.getValue() instanceof IndexEntry.OfClass && item.isLeaf())));
+    }
+
+    @Test
+    void eachPackageTalliesTheUnitsUnderItThatComplyWithTheRules() {
+        final List<JavaUnit> read = ClasspathUnits.INSTANCE.read(TAXONOMY, BenchPaneTest.class.getClassLoader());
+        final int interfaces = (int) read.stream().filter(unit -> unit instanceof InterfaceUnit).count();
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of()));
+        final TreeItem<IndexEntry> com = FxThread.INSTANCE.call(() -> at(tree(bench, "#units").getRoot(), "com"));
+        assertEquals(new Compliance(0, read.size(), read.size() + interfaces),
+                ((IndexEntry.Package) com.getValue()).compliance(), "every unit is seen, and every interface again");
+        assertEquals(new Compliance(0, 1, 2), FxThread.INSTANCE.call(() -> ((IndexEntry.OfClass)
+                at(com.getParent(), TAXONOMY + ".ClassKind").getValue()).compliance().orElseThrow()));
+        assertTrue(FxThread.INSTANCE.call(() -> bench.status().getText()).endsWith(
+                "; 0 comply with the 2 rules under " + RULES), FxThread.INSTANCE.call(() -> bench.status().getText()));
+        final LaidOut unruled = FxThread.INSTANCE.call(() -> new LaidOut(TAXONOMY, "no.rules.here", List.of()));
+        assertEquals(new Compliance(read.size(), read.size(), 0), FxThread.INSTANCE.call(() -> ((IndexEntry.Package)
+                at(tree(unruled, "#units").getRoot(), "com").getValue()).compliance()), "with no rules, all comply");
+    }
+
+    @Test
+    void aPackageTalliesTheUnitsInItAndInThePackagesBelowIt() {
+        final List<JavaUnit> read = ClasspathUnits.INSTANCE.read(TAXONOMY, BenchPaneTest.class.getClassLoader());
+        final TreeItem<IndexEntry> root = FxThread.INSTANCE.call(() -> UnitTree.INSTANCE.of(read,
+                unit -> unit instanceof InterfaceUnit ? new Compliance(0, 1, 1) : new Compliance(1, 1, 0)));
+        final int interfaces = (int) read.stream().filter(unit -> unit instanceof InterfaceUnit).count();
+        assertEquals(new Compliance(read.size() - interfaces, read.size(), interfaces),
+                ((IndexEntry.Package) root.getValue()).compliance());
+        assertEquals(new Compliance(2, 3, 1), ((IndexEntry.Package) at(root, TAXONOMY + ".scan").getValue())
+                .compliance(), "ClassScanner and DependencyFinder comply, and Occurrence, an interface, does not");
+        assertTrue(packages(root).allMatch(item -> ((IndexEntry.Package) item.getValue()).compliance().equals(
+                item.getChildren().stream().map(this::compliance).reduce(Compliance.NONE, Compliance::plus))));
+    }
+
+    @Test
+    void severalRootPackagesAreScannedTogetherEachUnitOnce() {
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(TAXONOMY + ".scan, " + RULES + " " + TAXONOMY,
+                RULES, List.of()));
+        final TreeItem<IndexEntry> cq = FxThread.INSTANCE.call(() -> at(tree(bench, "#units").getRoot(),
+                "com.homing_labs.cq"));
+        assertEquals(List.of("bench", "lang"), labels(cq));
+        final int units = ClasspathUnits.INSTANCE.read(TAXONOMY, BenchPaneTest.class.getClassLoader()).size()
+                + ClasspathUnits.INSTANCE.read(RULES, BenchPaneTest.class.getClassLoader()).size();
+        assertEquals(units, ((IndexEntry.Package) cq.getValue()).compliance().total());
+        assertTrue(FxThread.INSTANCE.call(() -> bench.status().getText()).startsWith(units + " units in 3 packages under "
+                + TAXONOMY + ".scan, " + RULES + ", " + TAXONOMY + ";"));
     }
 
     @Test
@@ -110,24 +169,70 @@ class BenchPaneTest {
     }
 
     @Test
-    void theUnitTreeShowsEachUnitWithTheBadgeOfItsKind() {
+    void theUnitTreeShowsEachUnitWithTheBadgeOfItsKindAndEachEntryWithItsCompliance() {
         final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of()));
-        final TreeItem<IndexEntry> taxonomy = FxThread.INSTANCE.call(() -> child(tree(bench, "#units").getRoot(),
+        final TreeItem<IndexEntry> taxonomy = FxThread.INSTANCE.call(() -> at(tree(bench, "#units").getRoot(),
                 TAXONOMY));
         assertEquals(List.of("I"), badges(child(taxonomy, "ClassKind")));
         assertEquals(List.of("R"), badges(child(taxonomy, "Placement")));
-        assertEquals(List.of("I"), FxThread.INSTANCE.call(() -> bench.root().lookupAll(".tree-cell").stream()
-                .map(cell -> (IndexCell) cell)
-                .filter(cell -> "ClassKind".equals(cell.getText()))
-                .flatMap(cell -> ((HBox) cell.getGraphic()).getChildren().stream())
-                .map(badge -> ((Label) badge).getText())
-                .toList()), "the cell shows the badge");
+        final int units = ClasspathUnits.INSTANCE.read(TAXONOMY, BenchPaneTest.class.getClassLoader()).size();
+        assertEquals(List.of("com", "0/" + units), FxThread.INSTANCE.call(() -> cell(bench, "com")));
+        assertEquals(List.of("I", "ClassKind", "2"), FxThread.INSTANCE.call(() -> {
+            final TreeView<IndexEntry> tree = tree(bench, "#units");
+            tree.scrollTo(tree.getRow(child(taxonomy, "ClassKind")));
+            bench.root().layout();
+            return cell(bench, "ClassKind");
+        }), "the cell shows its kind, its name and its findings counted");
+    }
+
+    @Test
+    void aTallyIsLivelyGreenWhenAllCompliesFromYellowToRedDownTo70PercentAndAlarmRedBelow() {
+        assertEquals(Badges.COMPLIANT, Badges.INSTANCE.colour(new Compliance(10, 10, 0)));
+        assertEquals(Badges.COMPLIANT, Badges.INSTANCE.colour(Compliance.NONE), "no units at all");
+        assertEquals(52, hue(999, 1000), 0.5, "yellow, just short of all");
+        assertEquals(6, hue(7, 10), 0.5, "red, at 70%");
+        final List<Double> hues = Stream.of(99, 95, 90, 85, 80, 75, 70).map(share -> hue(share, 100)).toList();
+        assertEquals(hues.stream().sorted(Comparator.reverseOrder()).distinct().toList(), hues,
+                "redder as fewer comply: " + hues);
+        assertEquals(Badges.ALARM, Badges.INSTANCE.colour(new Compliance(69, 100, 31)));
+        assertEquals(Badges.ALARM, Badges.INSTANCE.colour(new Compliance(0, 1, 1)));
+        assertEquals("#1f1f1f", Badges.INSTANCE.ofUnits(new Compliance(99, 100, 1)).ink(), "dark on yellow");
+        assertEquals("white", Badges.INSTANCE.ofUnits(new Compliance(7, 10, 3)).ink(), "white on red");
+        assertEquals("white", Badges.INSTANCE.ofUnits(new Compliance(10, 10, 0)).ink());
+    }
+
+    @Test
+    void aPackagesBadgeTalliesItsUnitsAndAUnitsSaysWhetherItComplies() {
+        final Badge tally = Badges.INSTANCE.ofUnits(new Compliance(41, 52, 23));
+        assertEquals("41/52", tally.text());
+        assertEquals("41 of 52 units comply with every rule applied to them; the rest have 23 findings between them",
+                tally.meaning());
+        assertEquals(List.of("✓", "3", "!"), Stream.of(new Compliance(1, 1, 0), new Compliance(0, 1, 3),
+                new Compliance(0, 1, 0)).map(Badges.INSTANCE::ofUnit).map(Badge::text).toList());
+        assertEquals(List.of(Badges.COMPLIANT, Badges.ALARM, Badges.ALARM), Stream.of(new Compliance(1, 1, 0),
+                new Compliance(0, 1, 3), new Compliance(0, 1, 0)).map(Badges.INSTANCE::ofUnit).map(Badge::colour)
+                .toList());
+    }
+
+    @Test
+    void aUnitCompliesWhenEveryRuleAppliedToItRanAndFoundNothing() {
+        final JavaUnit classKind = JavaUnits.INSTANCE.of(ClassKind.class, Optional.empty());
+        final JavaUnit placement = JavaUnits.INSTANCE.of(Placement.class, Optional.empty());
+        final List<Enforcer<?, ?, ?>> both = List.of(EveryUnitIsSeenEnforcer.INSTANCE, new InterfacesAreSeenEnforcer());
+        assertEquals(new Compliance(0, 1, 2), RuleChecks.INSTANCE.compliance(both, classKind));
+        assertEquals(new Compliance(0, 1, 1), RuleChecks.INSTANCE.compliance(both, placement));
+        assertEquals(new Compliance(1, 1, 0), RuleChecks.INSTANCE.compliance(List.of(), classKind),
+                "no rule applies");
+        final Applied failed = new Applied(Enforcers.INSTANCE.signatureOf(EveryUnitIsSeenEnforcer.INSTANCE),
+                Optional.empty(), Optional.of("it failed"));
+        assertEquals(new Compliance(0, 1, 0), new Compliance(List.of(failed)), "a rule that failed cannot vouch");
+        assertEquals(new Compliance(3, 7, 9), new Compliance(1, 2, 4).plus(new Compliance(2, 5, 5)));
     }
 
     @Test
     void thereIsATabForEachViewAndTheSourceBesideThem() {
         final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(new ClassObjectView(),
-                new RulesView(BenchPaneTest.class.getClassLoader(), RULES))));
+                new RulesView())));
         assertEquals(List.of("Class object", "Rules applied"), FxThread.INSTANCE.call(
                 () -> ((TabPane) bench.root().lookup("#views")).getTabs().stream().map(Tab::getText).toList()));
         assertTrue(FxThread.INSTANCE.call(() -> bench.root().lookup("#source") != null
@@ -420,8 +525,7 @@ class BenchPaneTest {
 
     @Test
     void theRulesAppliedAreThoseForEveryUnitAndForTheUnitsKind() {
-        final RulesView rules =
-                FxThread.INSTANCE.call(() -> new RulesView(BenchPaneTest.class.getClassLoader(), RULES));
+        final RulesView rules = FxThread.INSTANCE.call(RulesView::new);
         final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(rules)));
         assertEquals(List.of("EveryUnitIsSeen", "InterfacesAreSeen"), FxThread.INSTANCE.call(() -> {
             select(bench, "ClassKind");
@@ -435,13 +539,12 @@ class BenchPaneTest {
 
     @Test
     void selectingARuleShowsItsFindings() {
-        final RulesView rules =
-                FxThread.INSTANCE.call(() -> new RulesView(BenchPaneTest.class.getClassLoader(), RULES));
+        final RulesView rules = FxThread.INSTANCE.call(RulesView::new);
         final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(List.of(rules)));
         final List<String> findings = FxThread.INSTANCE.call(() -> {
             select(bench, "ClassKind");
-            @SuppressWarnings("unchecked") final TableView<RulesView.Applied> table =
-                    (TableView<RulesView.Applied>) bench.root().lookup("#rules");
+            @SuppressWarnings("unchecked") final TableView<Applied> table =
+                    (TableView<Applied>) bench.root().lookup("#rules");
             table.getSelectionModel().select(table.getItems().stream()
                     .filter(applied -> applied.signature().rule().getSimpleName().equals("InterfacesAreSeen"))
                     .findFirst().orElseThrow());
@@ -449,7 +552,7 @@ class BenchPaneTest {
         });
         assertEquals(List.of("Seen[unit=ClassKind]"), findings);
         assertEquals(List.of("1", "1"), FxThread.INSTANCE.call(
-                () -> rules.applied().stream().map(RulesView.Applied::outcome).toList()));
+                () -> rules.applied().stream().map(Applied::outcome).toList()));
     }
 
     @Test
@@ -525,7 +628,7 @@ class BenchPaneTest {
                 BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
                 ClassObjectView.Step.class, SourceView.class, SourceLines.class, SourceLines.Line.class, Focus.class,
                 Focus.OfClass.class, Focus.OfValues.class, Focus.OfInitialisation.class, ClasspathEnforcers.class,
-                RulesView.class, RulesView.Applied.class,
+                RulesView.class, Applied.class, RuleChecks.class, Compliance.class,
                 IndexCell.class, ClassAttributes.class, UnitClasses.class, ValueText.class, TaxonomyView.class,
                 Badge.class, Badges.class, Existence.TopLevel.class, Existence.StaticMember.class,
                 Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class,
@@ -536,11 +639,46 @@ class BenchPaneTest {
 
     private TreeView<IndexEntry> select(final LaidOut bench, final String unit) {
         final TreeView<IndexEntry> units = tree(bench, "#units");
-        units.getSelectionModel().select(units.getRoot().getChildren().stream()
-                .flatMap(inPackage -> inPackage.getChildren().stream())
-                .filter(item -> item.getValue().toString().equals(unit))
-                .findFirst().orElseThrow());
+        units.getSelectionModel().select(at(units.getRoot(), TAXONOMY + "." + unit));
         return units;
+    }
+
+    /** The item of the tree of units at a package, or at a unit, by its name: down from the root, part by part. */
+    private TreeItem<IndexEntry> at(final TreeItem<IndexEntry> root, final String name) {
+        TreeItem<IndexEntry> item = root;
+        for (final String part : name.split("\\.")) {
+            item = child(item, part);
+        }
+        return item;
+    }
+
+    /** The texts of the cell shown for an entry of the tree of units: its badges and name, in order. */
+    private List<String> cell(final LaidOut bench, final String label) {
+        return bench.root().lookupAll(".tree-cell").stream()
+                .map(cell -> (IndexCell) cell)
+                .filter(cell -> cell.getItem() != null && label.equals(cell.getItem().toString())
+                        && cell.getTreeView() == tree(bench, "#units"))
+                .flatMap(cell -> ((HBox) cell.getGraphic()).getChildren().stream())
+                .map(shown -> ((Label) shown).getText())
+                .toList();
+    }
+
+    /** The packages of a tree of units, the root's among them. */
+    private Stream<TreeItem<IndexEntry>> packages(final TreeItem<IndexEntry> item) {
+        return item.getValue() instanceof IndexEntry.Package
+                ? Stream.concat(Stream.of(item), item.getChildren().stream().flatMap(this::packages)) : Stream.empty();
+    }
+
+    private Compliance compliance(final TreeItem<IndexEntry> item) {
+        return switch (item.getValue()) {
+            case IndexEntry.Package inPackage -> inPackage.compliance();
+            case IndexEntry.OfClass unit -> unit.compliance().orElseThrow();
+        };
+    }
+
+    /** The hue of the colour of so many units complying out of so many. */
+    private double hue(final int compliant, final int total) {
+        return Color.web(Badges.INSTANCE.colour(new Compliance(compliant, total, total - compliant))).getHue();
     }
 
     private TreeView<IndexEntry> nest(final LaidOut bench) {
@@ -584,7 +722,7 @@ class BenchPaneTest {
                 .findFirst().orElseThrow();
     }
 
-    private List<String> ruleNames(final List<RulesView.Applied> applied) {
+    private List<String> ruleNames(final List<Applied> applied) {
         return applied.stream().map(rule -> rule.signature().rule().getSimpleName()).toList();
     }
 
@@ -597,7 +735,10 @@ class BenchPaneTest {
         return Badges.INSTANCE.of((IndexEntry.OfClass) item.getValue()).stream().map(Badge::text).toList();
     }
 
-    /** The bench over the taxonomy module, with these views and a source, laid out in a scene. */
+    /**
+     * The bench over the taxonomy module checked by the bench's test rules - or over other packages, by other rules -
+     * with these views and a source, laid out in a scene.
+     */
     private record LaidOut(Parent root) {
 
         LaidOut(final List<BenchView> views) {
@@ -605,10 +746,25 @@ class BenchPaneTest {
         }
 
         LaidOut(final List<BenchView> views, final SourceView source) {
-            this(BenchPane.INSTANCE.content(TAXONOMY, BenchPaneTest.class.getClassLoader(), views, source));
+            this(TAXONOMY, RULES, views, source);
+        }
+
+        LaidOut(final String rootPackages, final String rulesPackage, final List<BenchView> views) {
+            this(rootPackages, rulesPackage, views, new SourceView());
+        }
+
+        LaidOut(final String rootPackages, final String rulesPackage, final List<BenchView> views,
+                final SourceView source) {
+            this(BenchPane.INSTANCE.content(rootPackages, rulesPackage, BenchPaneTest.class.getClassLoader(), views,
+                    source));
             new Scene(root, 1280, 800);
             root.applyCss();
             root.layout();
+        }
+
+        /** The line saying what the scan found. */
+        Label status() {
+            return (Label) root.lookup("#status");
         }
     }
 }

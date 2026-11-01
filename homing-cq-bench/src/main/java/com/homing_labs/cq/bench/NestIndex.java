@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The index of a unit's nest, the bench's second layer: the unit's top-level class at the top, and under each class the
@@ -38,7 +39,7 @@ public record NestIndex() implements StatelessFunctionalObject {
 
     private TreeItem<IndexEntry> item(final JavaUnit unit, final Class<?> type) {
         final TreeItem<IndexEntry> item = new TreeItem<>(new IndexEntry.OfClass(new Selection(unit, type), label(type),
-                JavaUnits.INSTANCE.kindOf(type), existence(type)));
+                JavaUnits.INSTANCE.kindOf(type), existence(type), Optional.empty()));
         item.setExpanded(true);
         return item;
     }

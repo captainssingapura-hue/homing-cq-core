@@ -30,6 +30,12 @@ class ClasspathUnitsTest {
     }
 
     @Test
+    void severalRootPackagesAreReadTogetherEachUnitOnce() {
+        assertEquals(units, ClasspathUnits.INSTANCE.read(List.of(TAXONOMY + ".scan", TAXONOMY, "no.such.root"),
+                getClass().getClassLoader()), "the units under the first root are under the second too");
+    }
+
+    @Test
     void aPackageNoCodeBaseHasHasNoUnits() {
         assertEquals(List.of(), ClasspathUnits.INSTANCE.read("no.such.root", getClass().getClassLoader()));
     }

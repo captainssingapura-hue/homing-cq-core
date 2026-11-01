@@ -12,9 +12,10 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * The bench as a JavaFX application, in a window of its own. Its arguments are the root package to scan -
- * {@code com.homing_labs.cq} when there is none - then any class directories or jars to scan beside the classpath it
- * runs with. {@link Bench} starts it.
+ * The bench as a JavaFX application, in a window of its own. Its arguments are the root package to scan, or several
+ * apart by commas - {@code com.homing_labs.cq} when there is none - then any class directories or jars to scan beside
+ * the classpath it runs with. It checks the units by the rules under {@code com.homing_labs.cq}. {@link Bench} starts
+ * it.
  */
 public final class BenchApp extends Application implements Mutable {
 
@@ -24,9 +25,8 @@ public final class BenchApp extends Application implements Mutable {
         final String rootPackage = arguments.isEmpty() ? "com.homing_labs.cq" : arguments.getFirst();
         stage.setTitle("CQ Bench");
         final ClassLoader loader = loader(arguments.stream().skip(1).toList());
-        stage.setScene(new Scene(BenchPane.INSTANCE.content(rootPackage, loader,
-                List.of(new ClassObjectView(), new RulesView(loader, "com.homing_labs.cq")), new SourceView()),
-                1600, 900));
+        stage.setScene(new Scene(BenchPane.INSTANCE.content(rootPackage, "com.homing_labs.cq", loader,
+                List.of(new ClassObjectView(), new RulesView()), new SourceView()), 1600, 900));
         stage.show();
     }
 
