@@ -160,13 +160,7 @@ record TypeHeaders() implements StatelessFunctionalObject {
 
     /** A type's name: one identifier, which may not be a restricted one. */
     private Name name(final TokenScan scan) {
-        if (!scan.identifier(scan.at())) {
-            scan.error("<identifier> expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
-            return new Name("", new TokenRange(scan.at(), scan.at()));
-        }
-        final int index = scan.at();
-        scan.advance();
-        final Name name = new Name(scan.text(index), new TokenRange(index, index + 1));
+        final Name name = scan.simpleName();
         if (restrictedName(name.text())) {
             scan.error("'" + name.text() + "' is a restricted name: it cannot name a type", name.range());
         }

@@ -154,6 +154,17 @@ final class TokenScan implements Mutable {
         return new Name(text.toString(), new TokenRange(start, last + 1));
     }
 
+    /** A simple name: one identifier; an empty name, and a diagnostic, where it is missing. */
+    Name simpleName() {
+        if (!identifier(at)) {
+            error("<identifier> expected", at, Math.min(at + 1, size()));
+            return new Name("", new TokenRange(at, at));
+        }
+        final int index = at;
+        advance();
+        return new Name(text(index), new TokenRange(index, index + 1));
+    }
+
     /** Steps over the braces here and all between them; whether the closing one was found before the end. */
     boolean skipBlock() {
         int depth = 0;
