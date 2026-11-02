@@ -6,6 +6,7 @@ import com.homing_labs.cq.demo.enforce.MethodsWithin50LinesEnforcer;
 import com.homing_labs.cq.demo.enforce.NoPublicFieldsEnforcer;
 import com.homing_labs.cq.demo.enforce.NoStaticMethodsEnforcer;
 import com.homing_labs.cq.demo.enforce.NoStaticMutableVariablesEnforcer;
+import com.homing_labs.cq.demo.enforce.TopLevelClassesWithin250LinesEnforcer;
 import com.homing_labs.cq.demo.rule.NoStaticMethods;
 import com.homing_labs.cq.enforcer.def.Enforcer;
 import com.homing_labs.cq.enforcer.def.Result;
@@ -24,8 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The framework's own modules, and this demo's, checked against the demo rules from outside - as a qc module checks
- * the code it depends on, which knows nothing of the check. Of the size rules, only the one on methods so far: some
- * classes are still longer than the other allows.
+ * the code it depends on, which knows nothing of the check.
  */
 class TheFrameworkHoldsToTheDemoRulesTest {
 
@@ -47,6 +47,7 @@ class TheFrameworkHoldsToTheDemoRulesTest {
             found.addAll(DemoFindings.INSTANCE.of(NoStaticMethodsEnforcer.INSTANCE, units).values());
             found.addAll(DemoFindings.INSTANCE.of(NoStaticMutableVariablesEnforcer.INSTANCE, units).values());
             found.addAll(DemoFindings.INSTANCE.of(NoPublicFieldsEnforcer.INSTANCE, units).values());
+            found.addAll(DemoFindings.INSTANCE.of(TopLevelClassesWithin250LinesEnforcer.INSTANCE, units).values());
             found.addAll(DemoFindings.INSTANCE.of(MethodsWithin50LinesEnforcer.INSTANCE, units).values());
         }
         assertEquals(List.of(), found);
