@@ -11,6 +11,8 @@ import com.homing_labs.cq.lang.java.taxonomy.Cardinality;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.taxonomy.Placement;
 import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
+import com.homing_labs.cq.scan.ClassAttributes;
+import com.homing_labs.cq.scan.UnitClasses;
 import hue.captains.singapura.tao.ontology.Scalar;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;

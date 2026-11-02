@@ -1,10 +1,9 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.enforcer.def.Enforcer;
+import com.homing_labs.cq.scan.ScanResult;
 import hue.captains.singapura.tao.ontology.Mutable;
 import javafx.scene.Node;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -24,10 +23,10 @@ public interface BenchView extends Mutable {
     void show(Optional<Selection> selection);
 
     /**
-     * Takes the rules the bench found, and the package it found them under, whenever it scans. A view that applies no
-     * rule ignores them.
+     * Takes what the bench found - the units, and the rules applied to each - whenever it scans. A view that shows no
+     * rule ignores it.
      */
-    default void rules(final String rulesPackage, final List<Enforcer<?, ?, ?>> enforcers) {
+    default void scanned(final ScanResult result) {
     }
 
     /**

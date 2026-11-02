@@ -1,4 +1,4 @@
-package com.homing_labs.cq.bench;
+package com.homing_labs.cq.scan;
 
 import com.homing_labs.cq.enforcer.def.EnforcerSignature;
 import com.homing_labs.cq.enforcer.def.Result;

@@ -13,11 +13,14 @@
 
     <properties>
         <javafx.version>25</javafx.version>
-        <!-- what javafx:run passes the bench: the root package, then any class directories or jars to scan -->
-        <javafx.args>com.homing_labs.cq</javafx.args>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-scan</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
         <dependency>
             <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
             <artifactId>homing-cq-lang-java</artifactId>
@@ -48,6 +51,14 @@
             <version>${javafx.version}</version>
         </dependency>
 
+        <!-- the scan's test rules -->
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-scan</artifactId>
+            <version>${project.parent.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
             <artifactId>enforcer</artifactId>
@@ -57,18 +68,5 @@
             <artifactId>junit-jupiter</artifactId>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-maven-plugin</artifactId>
-                <version>0.0.8</version>
-                <configuration>
-                    <mainClass>com.homing_labs.cq.bench.Bench</mainClass>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

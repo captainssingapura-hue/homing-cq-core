@@ -1,4 +1,4 @@
-package com.homing_labs.cq.bench;
+package com.homing_labs.cq.scan;
 
 import com.homing_labs.cq.lang.java.model.Attributes;
 import com.homing_labs.cq.lang.java.model.ClassInitialisation;

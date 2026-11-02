@@ -1,9 +1,5 @@
 package com.homing_labs.cq.bench;
 
-import com.homing_labs.cq.bench.rules.EveryUnitIsSeenEnforcer;
-import com.homing_labs.cq.bench.rules.InterfacesAreSeenEnforcer;
-import com.homing_labs.cq.enforcer.def.Enforcer;
-import com.homing_labs.cq.enforcer.def.Enforcers;
 import com.homing_labs.cq.lang.java.def.JavaSource;
 import com.homing_labs.cq.lang.java.model.ClassName;
 import com.homing_labs.cq.lang.java.model.MethodValue;
@@ -25,6 +21,10 @@ import com.homing_labs.cq.lang.java.taxonomy.StaticField;
 import com.homing_labs.cq.lang.java.taxonomy.StaticMemberClass;
 import com.homing_labs.cq.lang.java.taxonomy.Superinterface;
 import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
+import com.homing_labs.cq.scan.Applied;
+import com.homing_labs.cq.scan.ClasspathUnits;
+import com.homing_labs.cq.scan.Compliance;
+import com.homing_labs.cq.scan.PackageRuleset;
 import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
 import javafx.scene.Parent;
@@ -72,7 +72,9 @@ class BenchPaneTest {
 
     private static final String ENUM_RECORD = TAXONOMY + ".ClassKind$Enum";
 
-    private static final String RULES = "com.homing_labs.cq.bench.rules";
+    private static final String RULES = "com.homing_labs.cq.scan.rules";
+
+    private static final String SCAN = "com.homing_labs.cq.scan";
 
     @BeforeAll
     void startJavaFx() {
@@ -105,7 +107,7 @@ class BenchPaneTest {
         assertEquals(new Compliance(0, 1, 2), FxThread.INSTANCE.call(() -> ((IndexEntry.OfClass)
                 at(com.getParent(), TAXONOMY + ".ClassKind").getValue()).compliance().orElseThrow()));
         assertTrue(FxThread.INSTANCE.call(() -> bench.status().getText()).endsWith(
-                "; 0 comply with the 2 rules under " + RULES), FxThread.INSTANCE.call(() -> bench.status().getText()));
+                "; 0 comply with the 2 rules of " + RULES), FxThread.INSTANCE.call(() -> bench.status().getText()));
         final LaidOut unruled = FxThread.INSTANCE.call(() -> new LaidOut(TAXONOMY, "no.rules.here", List.of()));
         assertEquals(new Compliance(read.size(), read.size(), 0), FxThread.INSTANCE.call(() -> ((IndexEntry.Package)
                 at(tree(unruled, "#units").getRoot(), "com").getValue()).compliance()), "with no rules, all comply");
@@ -126,17 +128,20 @@ class BenchPaneTest {
     }
 
     @Test
-    void severalRootPackagesAreScannedTogetherEachUnitOnce() {
-        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(TAXONOMY + ".scan, " + RULES + " " + TAXONOMY,
-                RULES, List.of()));
+    void severalRootPackagesAreScannedTogetherEachUnitOnceAndTestCodeLeftOut() {
+        final LaidOut bench = FxThread.INSTANCE.call(() -> new LaidOut(TAXONOMY + ".scan, " + RULES + " " + SCAN + " "
+                + TAXONOMY, RULES, List.of()));
         final TreeItem<IndexEntry> cq = FxThread.INSTANCE.call(() -> at(tree(bench, "#units").getRoot(),
                 "com.homing_labs.cq"));
-        assertEquals(List.of("bench", "lang"), labels(cq));
+        assertEquals(List.of("lang", "scan"), labels(cq));
+        assertEquals(List.of(), FxThread.INSTANCE.call(() -> labels(child(cq, "scan")).stream()
+                .filter(label -> label.equals("rules")).toList()), "the rules are test code, left out");
         final int units = ClasspathUnits.INSTANCE.read(TAXONOMY, BenchPaneTest.class.getClassLoader()).size()
-                + ClasspathUnits.INSTANCE.read(RULES, BenchPaneTest.class.getClassLoader()).size();
+                + ClasspathUnits.INSTANCE.main(List.of(SCAN), BenchPaneTest.class.getClassLoader()).size();
         assertEquals(units, ((IndexEntry.Package) cq.getValue()).compliance().total());
-        assertTrue(FxThread.INSTANCE.call(() -> bench.status().getText()).startsWith(units + " units in 3 packages under "
-                + TAXONOMY + ".scan, " + RULES + ", " + TAXONOMY + ";"));
+        final String status = FxThread.INSTANCE.call(() -> bench.status().getText());
+        assertTrue(status.startsWith(units + " units in 3 packages under " + TAXONOMY + ".scan, " + RULES + ", " + SCAN
+                + ", " + TAXONOMY + ";"), status);
     }
 
     @Test
@@ -212,21 +217,6 @@ class BenchPaneTest {
         assertEquals(List.of(Badges.COMPLIANT, Badges.ALARM, Badges.ALARM), Stream.of(new Compliance(1, 1, 0),
                 new Compliance(0, 1, 3), new Compliance(0, 1, 0)).map(Badges.INSTANCE::ofUnit).map(Badge::colour)
                 .toList());
-    }
-
-    @Test
-    void aUnitCompliesWhenEveryRuleAppliedToItRanAndFoundNothing() {
-        final JavaUnit classKind = JavaUnits.INSTANCE.of(ClassKind.class, Optional.empty());
-        final JavaUnit placement = JavaUnits.INSTANCE.of(Placement.class, Optional.empty());
-        final List<Enforcer<?, ?, ?>> both = List.of(EveryUnitIsSeenEnforcer.INSTANCE, new InterfacesAreSeenEnforcer());
-        assertEquals(new Compliance(0, 1, 2), RuleChecks.INSTANCE.compliance(both, classKind));
-        assertEquals(new Compliance(0, 1, 1), RuleChecks.INSTANCE.compliance(both, placement));
-        assertEquals(new Compliance(1, 1, 0), RuleChecks.INSTANCE.compliance(List.of(), classKind),
-                "no rule applies");
-        final Applied failed = new Applied(Enforcers.INSTANCE.signatureOf(EveryUnitIsSeenEnforcer.INSTANCE),
-                Optional.empty(), Optional.of("it failed"));
-        assertEquals(new Compliance(0, 1, 0), new Compliance(List.of(failed)), "a rule that failed cannot vouch");
-        assertEquals(new Compliance(3, 7, 9), new Compliance(1, 2, 4).plus(new Compliance(2, 5, 5)));
     }
 
     @Test
@@ -623,16 +613,15 @@ class BenchPaneTest {
 
     @Test
     void everyTypeOfTheBenchSaysWhatItIsAndIsHeldToIt() {
-        for (final Class<?> type : List.of(ClasspathUnits.class, Selection.class, IndexEntry.class,
+        for (final Class<?> type : List.of(Selection.class, IndexEntry.class,
                 IndexEntry.Package.class, IndexEntry.OfClass.class, UnitTree.class, NestIndex.class,
                 BenchView.class, ClassObjectView.class, ClassObjectView.Line.class, ClassObjectView.Row.class,
                 ClassObjectView.Step.class, SourceView.class, SourceLines.class, SourceLines.Line.class, Focus.class,
-                Focus.OfClass.class, Focus.OfValues.class, Focus.OfInitialisation.class, ClasspathEnforcers.class,
-                RulesView.class, Applied.class, RuleChecks.class, Compliance.class,
-                IndexCell.class, ClassAttributes.class, UnitClasses.class, ValueText.class, TaxonomyView.class,
+                Focus.OfClass.class, Focus.OfValues.class, Focus.OfInitialisation.class, RulesView.class,
+                IndexCell.class, ValueText.class, TaxonomyView.class,
                 Badge.class, Badges.class, Existence.TopLevel.class, Existence.StaticMember.class,
                 Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class,
-                BenchPane.class, BenchApp.class, Bench.class)) {
+                BenchPane.class, Bench.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());
         }
     }
@@ -736,7 +725,7 @@ class BenchPaneTest {
     }
 
     /**
-     * The bench over the taxonomy module checked by the bench's test rules - or over other packages, by other rules -
+     * The bench over the taxonomy module checked by the scan's test rules - or over other packages, by other rules -
      * with these views and a source, laid out in a scene.
      */
     private record LaidOut(Parent root) {
@@ -755,8 +744,8 @@ class BenchPaneTest {
 
         LaidOut(final String rootPackages, final String rulesPackage, final List<BenchView> views,
                 final SourceView source) {
-            this(BenchPane.INSTANCE.content(rootPackages, rulesPackage, BenchPaneTest.class.getClassLoader(), views,
-                    source));
+            this(BenchPane.INSTANCE.content(rootPackages, List.of(new PackageRuleset(rulesPackage)),
+                    BenchPaneTest.class.getClassLoader(), views, source));
             new Scene(root, 1280, 800);
             root.applyCss();
             root.layout();

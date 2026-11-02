@@ -1,7 +1,6 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.core.def.QcUnit;
-import com.homing_labs.cq.enforcer.def.Enforcer;
 import com.homing_labs.cq.lang.java.unit.AbstractClassUnit;
 import com.homing_labs.cq.lang.java.unit.AnnotationUnit;
 import com.homing_labs.cq.lang.java.unit.ClassUnit;
@@ -12,6 +11,9 @@ import com.homing_labs.cq.lang.java.unit.JavaNestedUnit;
 import com.homing_labs.cq.lang.java.unit.JavaNests;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import com.homing_labs.cq.lang.java.model.ClassName;
+import com.homing_labs.cq.scan.Applied;
+import com.homing_labs.cq.scan.ScanResult;
+import com.homing_labs.cq.scan.ScannedUnits;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
@@ -28,11 +30,10 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * The rules applied to the selected unit: every enforcer the bench found under its rules package whose unit type the
- * unit is of, run on it - a rule for every unit, or one for its kind of class alone. Above, a line for each rule
- * applied, with its principle, the units it is for and its findings counted; below, the findings of the rule
- * selected. A rule is checked on the whole unit; selecting a member class nested in it shows the sub-rules on that
- * class alone.
+ * The rules applied to the selected unit: every rule of the bench's rulesets whose unit type the unit is of, as the
+ * scan ran it - a rule for every unit, or one for its kind of class alone. Above, a line for each rule applied, with
+ * its principle, the units it is for and its findings counted; below, the findings of the rule selected. A rule is
+ * checked on the whole unit; selecting a member class nested in it shows the sub-rules on that class alone.
  */
 public final class RulesView implements BenchView {
 
@@ -44,11 +45,8 @@ public final class RulesView implements BenchView {
 
     private final BorderPane pane = new BorderPane();
 
-    /** The package the enforcers were found under. */
-    private String rulesPackage = "";
-
-    /** The enforcers found under the rules package. */
-    private List<Enforcer<?, ?, ?>> enforcers = List.of();
+    /** What the bench found when it last scanned: nothing, before it has. */
+    private ScanResult result = new ScanResult(new ScannedUnits(List.of()), 0);
 
     /** The selection shown. */
     private Optional<Selection> shown = Optional.empty();
@@ -85,24 +83,22 @@ public final class RulesView implements BenchView {
     }
 
     @Override
-    public void rules(final String rulesPackage, final List<Enforcer<?, ?, ?>> enforcers) {
-        this.rulesPackage = rulesPackage;
-        this.enforcers = List.copyOf(enforcers);
+    public void scanned(final ScanResult result) {
+        this.result = result;
         show(shown);
     }
 
     @Override
     public void show(final Optional<Selection> selection) {
         shown = selection;
-        final Optional<QcUnit<?>> checked = selection.map(this::checked);
-        final List<Applied> applied = checked.map(unit -> RuleChecks.INSTANCE.applied(enforcers, unit))
-                .orElse(List.of());
+        final List<Applied> applied = selection.flatMap(selected -> result.of(selected.unit())
+                .map(scanned -> scanned.appliedTo(new ClassName(selected.type().getName())).items())).orElse(List.of());
         rules.getItems().setAll(applied);
         findings.getItems().clear();
-        caption.setText(selection.map(selected -> applied.size() + " of " + count(enforcers.size(), "rule")
-                        + " under " + rulesPackage + " apply to " + what(selected, checked.get()))
-                .orElse(count(enforcers.size(), "rule") + " found under " + rulesPackage
-                        + ". Select a unit to apply them."));
+        caption.setText(selection.map(selected -> applied.size() + " of " + count(result.rules(), "rule")
+                        + " apply to " + what(selected, checked(selected)))
+                .orElse(count(result.rules(), "rule") + " in the rulesets. Select a unit to see those that apply"
+                        + " to it."));
     }
 
     /**

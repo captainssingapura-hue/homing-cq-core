@@ -1,6 +1,7 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
+import com.homing_labs.cq.scan.Compliance;
 import hue.captains.singapura.tao.ontology.Scalar;
 
 import java.util.Optional;

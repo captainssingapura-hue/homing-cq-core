@@ -1,4 +1,4 @@
-package com.homing_labs.cq.bench;
+package com.homing_labs.cq.scan;
 
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
 import org.junit.jupiter.api.Test;
@@ -38,5 +38,18 @@ class ClasspathUnitsTest {
     @Test
     void aPackageNoCodeBaseHasHasNoUnits() {
         assertEquals(List.of(), ClasspathUnits.INSTANCE.read("no.such.root", getClass().getClassLoader()));
+    }
+
+    @Test
+    void mainCodeLeavesTheTestsOut() {
+        final List<String> scan = List.of("com.homing_labs.cq.scan");
+        final List<String> all = ClasspathUnits.INSTANCE.read(scan, getClass().getClassLoader()).stream()
+                .map(unit -> unit.type().getName()).toList();
+        final List<String> main = ClasspathUnits.INSTANCE.main(scan, getClass().getClassLoader()).stream()
+                .map(unit -> unit.type().getName()).toList();
+        assertTrue(all.containsAll(List.of(Scanner.class.getName(), getClass().getName())), all.toString());
+        assertTrue(main.contains(Scanner.class.getName()), main.toString());
+        assertTrue(main.stream().noneMatch(name -> name.endsWith("Test") || name.contains(".rules.")),
+                main.toString());
     }
 }

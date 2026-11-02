@@ -1,6 +1,7 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
+import com.homing_labs.cq.scan.Compliance;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 import javafx.scene.paint.Color;
 

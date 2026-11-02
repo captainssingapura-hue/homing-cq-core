@@ -1,11 +1,15 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
+import com.homing_labs.cq.scan.Compliance;
+import com.homing_labs.cq.scan.ScannedUnit;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 import javafx.scene.control.TreeItem;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.function.Function;
@@ -20,6 +24,13 @@ import java.util.stream.Collectors;
 public record UnitTree() implements StatelessFunctionalObject {
 
     public static final UnitTree INSTANCE = new UnitTree();
+
+    /** The tree of the units a scan found, each with how far it complies with the rules applied to it whole. */
+    public TreeItem<IndexEntry> of(final List<ScannedUnit> scanned) {
+        final Map<JavaUnit, Compliance> compliance = new IdentityHashMap<>();
+        scanned.forEach(unit -> compliance.put(unit.unit(), unit.compliance()));
+        return of(scanned.stream().map(ScannedUnit::unit).toList(), compliance::get);
+    }
 
     /**
      * The tree of these units, each with its compliance, under a root that stands for no package and is not shown:

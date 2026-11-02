@@ -1,4 +1,4 @@
-package com.homing_labs.cq.bench;
+package com.homing_labs.cq.scan;
 
 import hue.captains.singapura.tao.ontology.Scalar;
 

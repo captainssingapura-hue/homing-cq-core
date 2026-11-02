@@ -1,4 +1,4 @@
-package com.homing_labs.cq.bench.rules;
+package com.homing_labs.cq.scan.rules;
 
 import com.homing_labs.cq.core.def.lang.JavaLang;
 import com.homing_labs.cq.enforcer.def.Enforcer;

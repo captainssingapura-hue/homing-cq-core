@@ -1,4 +1,4 @@
-package com.homing_labs.cq.bench;
+package com.homing_labs.cq.scan;
 
 import com.homing_labs.cq.core.def.QcUnit;
 import com.homing_labs.cq.enforcer.def.Enforcer;
@@ -12,7 +12,7 @@ import java.util.Optional;
 
 /**
  * Applies rules to a unit: each enforcer whose unit type the unit is of is run on it - a rule for every unit, or one
- * for its kind of class alone. The tree's tallies and the rules view apply them alike.
+ * for its kind of class alone.
  */
 public record RuleChecks() implements StatelessFunctionalObject {
 

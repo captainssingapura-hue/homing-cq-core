@@ -18,6 +18,7 @@
         <module>homing-cq-lang-java-taxonomy</module>
         <module>homing-cq-lang-java-lexer</module>
         <module>homing-cq-lang-java-outline</module>
+        <module>homing-cq-scan</module>
         <module>homing-cq-bench</module>
         <module>homing-cq-demo</module>
     </modules>
