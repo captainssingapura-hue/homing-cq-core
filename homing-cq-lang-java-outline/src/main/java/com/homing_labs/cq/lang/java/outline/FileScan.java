@@ -3,6 +3,7 @@ package com.homing_labs.cq.lang.java.outline;
 import com.homing_labs.cq.lang.java.lexer.Diagnostic;
 import com.homing_labs.cq.lang.java.lexer.Diagnostics;
 import com.homing_labs.cq.lang.java.lexer.TokenStream;
+import hue.captains.singapura.tao.ontology.Mutable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -14,13 +15,16 @@ import java.util.function.Function;
  * One reading of a file's top level: the phase the file is in - before its imports, among them, or among its types -
  * and the parts found so far. The body of each type is read by a {@link BodyScan} of its own.
  */
-final class FileScan extends TokenScan {
+final class FileScan implements Mutable {
 
     private static final int BEFORE_IMPORTS = 0;
 
     private static final int AMONG_IMPORTS = 1;
 
     private static final int AMONG_TYPES = 2;
+
+    /** The file's tokens, as this reads them. */
+    private final TokenScan scan;
 
     private final String fileName;
 
@@ -37,20 +41,20 @@ final class FileScan extends TokenScan {
     private boolean packaged;
 
     FileScan(final TokenStream stream) {
-        super(stream);
+        this.scan = new TokenScan(stream);
         this.fileName = stream.source().fileName();
     }
 
     Outline run() {
-        while (at < size()) {
-            final int start = at;
-            final List<ModifierItem> modifiers = modifiers();
-            final Optional<TypeKeyword> keyword = typeKeyword();
-            if (is("package")) {
+        while (scan.at() < scan.size()) {
+            final int start = scan.at();
+            final List<ModifierItem> modifiers = scan.modifiers();
+            final Optional<TypeKeyword> keyword = TypeHeaders.INSTANCE.keyword(scan);
+            if (scan.is("package")) {
                 packageDeclaration(start, modifiers);
-            } else if (is("import")) {
+            } else if (scan.is("import")) {
                 importDeclaration(start, modifiers);
-            } else if (is(";") && modifiers.isEmpty()) {
+            } else if (scan.is(";") && modifiers.isEmpty()) {
                 emptyDeclaration(start);
             } else if (keyword.isPresent()) {
                 typeDeclaration(start, modifiers, keyword.get());
@@ -63,29 +67,29 @@ final class FileScan extends TokenScan {
                 unrecognised(start);
             }
         }
-        docs.dangling(stream, unread).forEach(token -> warning("documentation comment is not attached to any"
-                + " declaration", token, token + 1));
-        diagnostics.sort(Comparator.comparingInt(Diagnostic::start));
-        return new Outline(stream, new FileParts(parts()), new Diagnostics(diagnostics));
+        scan.docs.dangling(scan.stream, scan.unread).forEach(token -> scan.warning("documentation comment is not"
+                + " attached to any declaration", token, token + 1));
+        scan.diagnostics.sort(Comparator.comparingInt(Diagnostic::start));
+        return new Outline(scan.stream, new FileParts(parts()), new Diagnostics(scan.diagnostics));
     }
 
     private void packageDeclaration(final int start, final List<ModifierItem> modifiers) {
         final boolean packageInfo = fileName.equals("package-info.java");
-        final Optional<DocComment> doc = packageInfo ? attach(start) : Optional.empty();
+        final Optional<DocComment> doc = packageInfo ? scan.attach(start) : Optional.empty();
         final Modifiers written = new Modifiers(modifiers);
-        written.words().forEach(word -> error("modifier " + word.word() + " not allowed here", word.range()));
+        written.words().forEach(word -> scan.error("modifier " + word.word() + " not allowed here", word.range()));
         if (!packageInfo && !written.annotations().isEmpty()) {
-            error("package annotations should be in file package-info.java",
+            scan.error("package annotations should be in file package-info.java",
                     written.annotations().getFirst().range().from(), written.annotations().getLast().range().to());
         }
         if (packaged) {
-            error("a file declares one package only", at, at + 1);
+            scan.error("a file declares one package only", scan.at(), scan.at() + 1);
         } else if (phase != BEFORE_IMPORTS) {
-            error("the package declaration comes before the imports and the types", at, at + 1);
+            scan.error("the package declaration comes before the imports and the types", scan.at(), scan.at() + 1);
         }
         packaged = true;
-        advance();
-        final Name name = name();
+        scan.advance();
+        final Name name = scan.name();
         semicolon();
         phase = Math.max(phase, AMONG_IMPORTS);
         found(doc.map(DocComment::token).orElse(start),
@@ -94,26 +98,27 @@ final class FileScan extends TokenScan {
 
     private void importDeclaration(final int start, final List<ModifierItem> modifiers) {
         if (!modifiers.isEmpty()) {
-            error("an import takes no modifiers and no annotations", start, at);
+            scan.error("an import takes no modifiers and no annotations", start, scan.at());
         }
         if (phase == AMONG_TYPES) {
-            error("the imports come before the types", at, at + 1);
+            scan.error("the imports come before the types", scan.at(), scan.at() + 1);
         }
-        semicolons.forEach(semicolon -> error("extraneous semicolon", semicolon, semicolon + 1));
+        semicolons.forEach(semicolon -> scan.error("extraneous semicolon", semicolon, semicolon + 1));
         semicolons.clear();
-        advance();
-        final boolean statically = is("static");
-        final boolean module = !statically && is("module") && identifier(at) && identifier(next(at));
+        scan.advance();
+        final boolean statically = scan.is("static");
+        final boolean module = !statically && scan.is("module") && scan.identifier(scan.at())
+                && scan.identifier(scan.next(scan.at()));
         if (statically || module) {
-            advance();
+            scan.advance();
         }
-        final Name name = name();
-        final boolean onDemand = !module && is(".") && is(next(at), "*");
+        final Name name = scan.name();
+        final boolean onDemand = !module && scan.is(".") && scan.is(scan.next(scan.at()), "*");
         if (onDemand) {
-            advance();
-            advance();
+            scan.advance();
+            scan.advance();
         } else if (!module && !name.text().isEmpty() && !name.text().contains(".")) {
-            error("'.' expected", name.range());
+            scan.error("'.' expected", name.range());
         }
         semicolon();
         phase = Math.max(phase, AMONG_IMPORTS);
@@ -126,7 +131,7 @@ final class FileScan extends TokenScan {
     }
 
     private void emptyDeclaration(final int start) {
-        advance();
+        scan.advance();
         if (phase != AMONG_TYPES) {
             semicolons.add(start);
         }
@@ -134,19 +139,19 @@ final class FileScan extends TokenScan {
     }
 
     private void typeDeclaration(final int start, final List<ModifierItem> modifiers, final TypeKeyword keyword) {
-        final TypeHeader header = typeHeader(start, modifiers, keyword);
-        final Body body = typeBody();
+        final TypeHeader header = TypeHeaders.INSTANCE.read(scan, start, modifiers, keyword);
+        final TypeBody body = TypeHeaders.INSTANCE.body(scan, this::startsPart);
         if (body.end() instanceof BodyEnd.Unterminated) {
-            error("reached end of file while parsing: the body of " + header.name().text() + " is never closed",
+            scan.error("reached end of file while parsing: the body of " + header.name().text() + " is never closed",
                     body.range().from(), body.range().from() + 1);
         }
         final BodyParts read = new BodyParts(body.end() instanceof BodyEnd.Missing ? List.of()
-                : new BodyScan(this, header, body.inside()).run());
-        checkHeader(header, Optional.empty());
+                : new BodyScan(scan, header, body.inside()).run());
+        HeaderChecks.INSTANCE.checkHeader(scan, header, Optional.empty());
         final String name = header.name().text();
         if (header.modifiers().has("public") && fileName.endsWith(".java") && !name.isEmpty()
                 && !fileName.equals(name + ".java")) {
-            error(keyword.word() + " " + name + " is public, should be declared in a file named " + name + ".java",
+            scan.error(keyword.word() + " " + name + " is public, should be declared in a file named " + name + ".java",
                     header.name().range());
         }
         phase = AMONG_TYPES;
@@ -156,24 +161,26 @@ final class FileScan extends TokenScan {
     }
 
     private boolean moduleDeclaration() {
-        return is("module") && identifier(at) && identifier(next(at)) || is("open") && is(next(at), "module");
+        return scan.is("module") && scan.identifier(scan.at()) && scan.identifier(scan.next(scan.at()))
+                || scan.is("open") && scan.is(scan.next(scan.at()), "module");
     }
 
     /** Whether what follows is shaped like a method or a field: a type, a name, and what follows a member's name. */
     private boolean memberShaped() {
-        int index = is("<") ? pastAngles(at) : at;
-        if (!(identifier(index) || is(index, "void") || keyword(index) && primitive(text(index)))) {
+        int index = scan.is("<") ? pastAngles(scan.at()) : scan.at();
+        if (!(scan.identifier(index) || scan.is(index, "void")
+                || scan.keyword(index) && scan.primitive(scan.text(index)))) {
             return false;
         }
-        index = next(index);
-        while (index < size()) {
-            if (is(index, ".") || is(index, "[") || is(index, "]")) {
-                index = next(index);
-            } else if (is(index, "<")) {
+        index = scan.next(index);
+        while (index < scan.size()) {
+            if (scan.is(index, ".") || scan.is(index, "[") || scan.is(index, "]")) {
+                index = scan.next(index);
+            } else if (scan.is(index, "<")) {
                 index = pastAngles(index);
-            } else if (identifier(index)) {
-                final int after = next(index);
-                if (is(after, "(") || is(after, "=") || is(after, ";") || is(after, ",")) {
+            } else if (scan.identifier(index)) {
+                final int after = scan.next(index);
+                if (scan.is(after, "(") || scan.is(after, "=") || scan.is(after, ";") || scan.is(after, ",")) {
                     return true;
                 }
                 index = after;
@@ -187,64 +194,63 @@ final class FileScan extends TokenScan {
     private int pastAngles(final int from) {
         int depth = 0;
         int index = from;
-        while (index < size() && !is(index, "{") && !is(index, ";")) {
-            if (is(index, "<")) {
+        while (index < scan.size() && !scan.is(index, "{") && !scan.is(index, ";")) {
+            if (scan.is(index, "<")) {
                 depth++;
-            } else if (is(index, ">") && --depth == 0) {
-                return next(index);
+            } else if (scan.is(index, ">") && --depth == 0) {
+                return scan.next(index);
             }
-            index = next(index);
+            index = scan.next(index);
         }
         return index;
     }
 
     /** A form of file that is not read yet: the rest of it, with its documentation comment, is one part, unread. */
     private void notHandled(final int start, final String message) {
-        final int from = attach(start).map(DocComment::token).orElse(start);
-        error(message, at, Math.min(at + 1, size()));
-        unread.add(new TokenRange(from, size()));
-        last = size() - 1;
-        at = size();
+        final int from = scan.attach(start).map(DocComment::token).orElse(start);
+        scan.error(message, scan.at(), Math.min(scan.at() + 1, scan.size()));
+        scan.unread.add(new TokenRange(from, scan.size()));
+        scan.toEnd();
         found(from, FilePart.Unrecognised::new);
     }
 
     private void unrecognised(final int start) {
-        if (at == start) {
-            advance();
+        if (scan.at() == start) {
+            scan.advance();
         }
         recover();
-        error("class, interface, enum, or record expected", start, last + 1);
+        scan.error("class, interface, enum, or record expected", start, scan.last() + 1);
         found(start, FilePart.Unrecognised::new);
     }
 
     private void semicolon() {
-        if (is(";")) {
-            advance();
+        if (scan.is(";")) {
+            scan.advance();
             return;
         }
-        error("';' expected", at, Math.min(at + 1, size()));
+        scan.error("';' expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
         recover();
     }
 
     /** Steps over what cannot be read: up to the next semicolon and over it, or up to the next start of a part. */
     private void recover() {
-        while (at < size() && !startsPart(at)) {
-            if (is("{")) {
-                skipBlock();
-            } else if (is(";")) {
-                advance();
+        while (scan.at() < scan.size() && !startsPart(scan.at())) {
+            if (scan.is("{")) {
+                scan.skipBlock();
+            } else if (scan.is(";")) {
+                scan.advance();
                 return;
             } else {
-                advance();
+                scan.advance();
             }
         }
     }
 
-    @Override
-    boolean startsPart(final int index) {
-        return is(index, "package") || is(index, "import") || is(index, "@") || is(index, "class")
-                || is(index, "interface") || is(index, "enum") || is(index, "record") && identifier(next(index))
-                || keyword(index) && modifierWord(text(index));
+    private boolean startsPart(final int index) {
+        return scan.is(index, "package") || scan.is(index, "import") || scan.is(index, "@") || scan.is(index, "class")
+                || scan.is(index, "interface") || scan.is(index, "enum")
+                || scan.is(index, "record") && scan.identifier(scan.next(index))
+                || scan.keyword(index) && scan.modifierWord(scan.text(index));
     }
 
     private void found(final int start, final Function<TokenRange, FilePart> part) {
@@ -254,12 +260,12 @@ final class FileScan extends TokenScan {
 
     private List<FilePart> parts() {
         final List<FilePart> made = new ArrayList<>();
-        final int first = starts.isEmpty() ? size() : starts.getFirst();
+        final int first = starts.isEmpty() ? scan.size() : starts.getFirst();
         if (first > 0) {
             made.add(new FilePart.Preamble(new TokenRange(0, first)));
         }
         for (int index = 0; index < starts.size(); index++) {
-            final int end = index + 1 < starts.size() ? starts.get(index + 1) : size();
+            final int end = index + 1 < starts.size() ? starts.get(index + 1) : scan.size();
             made.add(parts.get(index).apply(new TokenRange(starts.get(index), end)));
         }
         return made;

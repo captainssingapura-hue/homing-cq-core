@@ -3,6 +3,7 @@ package com.homing_labs.cq.lang.java.outline;
 import com.homing_labs.cq.lang.java.lexer.Diagnostic;
 import com.homing_labs.cq.lang.java.lexer.Diagnostics;
 import com.homing_labs.cq.lang.java.lexer.TokenStream;
+import hue.captains.singapura.tao.ontology.Mutable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -19,7 +20,10 @@ import java.util.function.Function;
  * <p>A top-level type's body passes the body of each of its member types on to the {@link NestedClassParser}, as a
  * block of code copied out of the file, to be read the same way - a member type's body, read so, passes on nothing.</p>
  */
-final class BodyScan extends TokenScan {
+final class BodyScan implements Mutable {
+
+    /** The body's tokens, as this reads them: the file's, or those of a block of code. */
+    private final TokenScan scan;
 
     /** The word the type whose body this is is declared with, and its name. */
     private final TypeKeyword ownKeyword;
@@ -39,7 +43,7 @@ final class BodyScan extends TokenScan {
 
     /** A reading of a top-level type's body, as the reading of the file has stepped over it. */
     BodyScan(final TokenScan outer, final TypeHeader type, final TokenRange inside) {
-        super(outer, inside);
+        this.scan = new TokenScan(outer, inside);
         this.ownKeyword = type.keyword();
         this.ownName = type.name().text();
         this.passesOn = true;
@@ -47,7 +51,7 @@ final class BodyScan extends TokenScan {
 
     /** A reading of a member type's body, from a block of code lexed on its own. */
     BodyScan(final TokenStream block, final TypeKeyword keyword, final String name, final TokenRange inside) {
-        super(block, inside);
+        this.scan = new TokenScan(block, inside);
         this.ownKeyword = keyword;
         this.ownName = name;
         this.passesOn = false;
@@ -56,37 +60,37 @@ final class BodyScan extends TokenScan {
     /** The body read from a block of code: its parts, and what was found wrong in them, at the block's positions. */
     NestedBody runNested(final CodeBlock block) {
         final List<BodyPart> read = run();
-        docs.dangling(stream, unread).forEach(token -> warning("documentation comment is not attached to any"
-                + " declaration", token, token + 1));
-        diagnostics.sort(Comparator.comparingInt(Diagnostic::start));
-        return new NestedBody(block, stream, new BodyParts(read), new Diagnostics(diagnostics));
+        scan.docs.dangling(scan.stream, scan.unread).forEach(token -> scan.warning("documentation comment is not"
+                + " attached to any declaration", token, token + 1));
+        scan.diagnostics.sort(Comparator.comparingInt(Diagnostic::start));
+        return new NestedBody(block, scan.stream, new BodyParts(read), new Diagnostics(scan.diagnostics));
     }
 
     List<BodyPart> run() {
         if (ownKeyword instanceof TypeKeyword.Enum) {
             enumConstants();
         }
-        while (at < size()) {
-            final int start = at;
-            final List<ModifierItem> modifiers = modifiers();
-            final Optional<TypeKeyword> keyword = typeKeyword();
+        while (scan.at() < scan.size()) {
+            final int start = scan.at();
+            final List<ModifierItem> modifiers = scan.modifiers();
+            final Optional<TypeKeyword> keyword = TypeHeaders.INSTANCE.keyword(scan);
             if (keyword.isPresent()) {
                 typeDeclaration(start, modifiers, keyword.get());
-            } else if (is("{")) {
+            } else if (scan.is("{")) {
                 initializer(start, modifiers);
-            } else if (is(";") && modifiers.isEmpty()) {
-                advance();
+            } else if (scan.is(";") && modifiers.isEmpty()) {
+                scan.advance();
                 found(start, BodyPart.EmptyDeclaration::new);
             } else if (modifiers.isEmpty() && enumConstantShaped()) {
                 if (!misplaced) {
-                    error("enum constant not expected here", at, at + 1);
+                    scan.error("enum constant not expected here", scan.at(), scan.at() + 1);
                     misplaced = true;
                 }
                 enumConstant();
-                if (is(",")) {
-                    advance();
+                if (scan.is(",")) {
+                    scan.advance();
                 }
-            } else if (is("<") || typeStart(at)) {
+            } else if (scan.is("<") || typeStart(scan.at())) {
                 methodOrField(start, modifiers);
             } else {
                 unrecognised(start);
@@ -100,35 +104,36 @@ final class BodyScan extends TokenScan {
      * What cannot start a constant ends them, as javac reads it: it and the rest are read as the enum's members.
      */
     private void enumConstants() {
-        if (is(",")) {
-            advance();
-            if (at < size() && !is(";")) {
-                error("'}' or ';' expected", at, at + 1);
+        if (scan.is(",")) {
+            scan.advance();
+            if (scan.at() < scan.size() && !scan.is(";")) {
+                scan.error("'}' or ';' expected", scan.at(), scan.at() + 1);
             }
         }
-        while (at < size() && !is(";")) {
+        while (scan.at() < scan.size() && !scan.is(";")) {
             if (!constantStart()) {
-                error("enum constant expected here", at, at + 1);
+                scan.error("enum constant expected here", scan.at(), scan.at() + 1);
                 return;
             }
             enumConstant();
-            if (is(",")) {
-                advance();
-            } else if (at < size() && !is(";")) {
-                error("',', '}', or ';' expected", at, at + 1);
+            if (scan.is(",")) {
+                scan.advance();
+            } else if (scan.at() < scan.size() && !scan.is(";")) {
+                scan.error("',', '}', or ';' expected", scan.at(), scan.at() + 1);
                 if (!constantStart()) {
                     return;
                 }
             }
         }
-        if (is(";")) {
-            advance();
+        if (scan.is(";")) {
+            scan.advance();
         }
     }
 
     /** Whether an enum constant can start here: an annotation, or a name. */
     private boolean constantStart() {
-        return is("@") && !is(next(at), "interface") || identifier(at) && !(is("record") && identifier(next(at)));
+        return scan.is("@") && !scan.is(scan.next(scan.at()), "interface")
+                || scan.identifier(scan.at()) && !(scan.is("record") && scan.identifier(scan.next(scan.at())));
     }
 
     /**
@@ -136,30 +141,32 @@ final class BodyScan extends TokenScan {
      * enum's, and what follows a constant's name.
      */
     private boolean enumConstantShaped() {
-        return ownKeyword instanceof TypeKeyword.Enum && identifier(at) && !text(at).equals(ownName)
-                && (is(next(at), "(") || is(next(at), "{") || is(next(at), ",") || is(next(at), ";"));
+        final int after = scan.next(scan.at());
+        return ownKeyword instanceof TypeKeyword.Enum && scan.identifier(scan.at())
+                && !scan.text(scan.at()).equals(ownName)
+                && (scan.is(after, "(") || scan.is(after, "{") || scan.is(after, ",") || scan.is(after, ";"));
     }
 
     private void enumConstant() {
-        final int start = at;
-        final Optional<DocComment> doc = attach(start);
-        final List<ModifierItem> annotations = modifiers();
-        annotationsOnly(annotations);
+        final int start = scan.at();
+        final Optional<DocComment> doc = scan.attach(start);
+        final List<ModifierItem> annotations = scan.modifiers();
+        scan.annotationsOnly(annotations);
         final Name name = memberName();
-        docs.flush(at, doc);
-        final Optional<TokenRange> arguments = is("(") ? Optional.of(parenthesized()) : Optional.empty();
-        final Optional<TokenRange> body = is("{") ? Optional.of(block()) : Optional.empty();
+        scan.docs.flush(scan.at(), doc);
+        final Optional<TokenRange> arguments = scan.is("(") ? Optional.of(parenthesized()) : Optional.empty();
+        final Optional<TokenRange> body = scan.is("{") ? Optional.of(block()) : Optional.empty();
         found(doc.map(DocComment::token).orElse(start), range -> new BodyPart.EnumConstant(doc,
                 new Modifiers(annotations), name, arguments, body, range));
     }
 
     private void typeDeclaration(final int start, final List<ModifierItem> modifiers, final TypeKeyword keyword) {
-        final TypeHeader header = typeHeader(start, modifiers, keyword);
-        final Body body = typeBody();
+        final TypeHeader header = TypeHeaders.INSTANCE.read(scan, start, modifiers, keyword);
+        final TypeBody body = TypeHeaders.INSTANCE.body(scan, this::startsPart);
         if (!(body.end() instanceof BodyEnd.Missing)) {
-            unread.add(body.range());
+            scan.unread.add(body.range());
         }
-        checkHeader(header, Optional.of(ownKeyword));
+        HeaderChecks.INSTANCE.checkHeader(scan, header, Optional.of(ownKeyword));
         final Optional<NestedBody> nested = passesOn && !(body.end() instanceof BodyEnd.Missing)
                 ? Optional.of(passOn(header, body.range())) : Optional.empty();
         found(header.doc().map(DocComment::token).orElse(start), range -> new BodyPart.TypeDeclaration(header,
@@ -171,32 +178,33 @@ final class BodyScan extends TokenScan {
      * it finds wrong is found wrong in the file, where it is there.
      */
     private NestedBody passOn(final TypeHeader header, final TokenRange body) {
-        final int from = stream.get(body.from()).start();
-        final int to = stream.get(body.to() - 1).end();
-        final CodeBlock block = new CodeBlock(stream.source().text().substring(from, to), from,
-                stream.source().position(from).line());
+        final int from = scan.stream.get(body.from()).start();
+        final int to = scan.stream.get(body.to() - 1).end();
+        final CodeBlock block = new CodeBlock(scan.stream.source().text().substring(from, to), from,
+                scan.stream.source().position(from).line());
         final NestedBody read = NestedClassParser.INSTANCE.parse(header.keyword(), header.name().text(), block);
-        read.diagnostics().items().forEach(found -> diagnostics.add(new Diagnostic(found.severity(),
+        read.diagnostics().items().forEach(found -> scan.diagnostics.add(new Diagnostic(found.severity(),
                 found.message(), from + found.start(), from + found.end())));
         return read;
     }
 
     /** An initializer: a block, static or not; javac reads a block with any other modifier as no member at all. */
     private void initializer(final int start, final List<ModifierItem> modifiers) {
-        final Optional<DocComment> doc = attach(start);
+        final Optional<DocComment> doc = scan.attach(start);
         final Modifiers written = new Modifiers(modifiers);
         if (!written.annotations().isEmpty() || written.words().stream().anyMatch(word -> !word.word().equals(
                 "static"))) {
-            error("illegal start of type", at, at + 1);
+            scan.error("illegal start of type", scan.at(), scan.at() + 1);
         } else {
-            checkModifiers(written, Set.of("static"), false, new TokenRange(start, at));
+            HeaderChecks.INSTANCE.checkModifiers(scan, written, Set.of("static"), false,
+                    new TokenRange(start, scan.at()));
             if (interfaceLike()) {
-                error("initializers not allowed in interfaces", at, at + 1);
+                scan.error("initializers not allowed in interfaces", scan.at(), scan.at() + 1);
             } else if (ownKeyword instanceof TypeKeyword.Record && !written.has("static")) {
-                error("instance initializers not allowed in records", at, at + 1);
+                scan.error("instance initializers not allowed in records", scan.at(), scan.at() + 1);
             }
         }
-        docs.clear(at);
+        scan.docs.clear(scan.at());
         final TokenRange body = block();
         found(doc.map(DocComment::token).orElse(start), range -> new BodyPart.Initializer(doc, written, body,
                 range));
@@ -208,14 +216,14 @@ final class BodyScan extends TokenScan {
      * not which of them. A name and a brace is a record's compact constructor.
      */
     private void methodOrField(final int start, final List<ModifierItem> modifiers) {
-        final Optional<DocComment> doc = attach(start);
-        final List<TypeParameter> typeParameters = is("<") ? typeParameters() : List.of();
-        if (identifier(at) && is(next(at), "(")) {
+        final Optional<DocComment> doc = scan.attach(start);
+        final List<TypeParameter> typeParameters = scan.is("<") ? TypeHeaders.INSTANCE.typeParameters(scan) : List.of();
+        if (scan.identifier(scan.at()) && scan.is(scan.next(scan.at()), "(")) {
             constructor(start, doc, modifiers, typeParameters);
             return;
         }
-        if (identifier(at) && is(next(at), "{") && typeParameters.isEmpty()
-                && (ownKeyword instanceof TypeKeyword.Record || text(at).equals(ownName))) {
+        if (scan.identifier(scan.at()) && scan.is(scan.next(scan.at()), "{") && typeParameters.isEmpty()
+                && (ownKeyword instanceof TypeKeyword.Record || scan.text(scan.at()).equals(ownName))) {
             compactConstructor(start, doc, modifiers);
             return;
         }
@@ -226,11 +234,11 @@ final class BodyScan extends TokenScan {
             return;
         }
         final Name name = memberName();
-        if (is("(")) {
+        if (scan.is("(")) {
             method(start, doc, modifiers, typeParameters, result, name);
         } else {
             if (!typeParameters.isEmpty()) {
-                error("'(' expected", at, Math.min(at + 1, size()));
+                scan.error("'(' expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
             }
             field(start, doc, modifiers, result, name);
         }
@@ -240,21 +248,21 @@ final class BodyScan extends TokenScan {
                              final List<TypeParameter> typeParameters) {
         final Name name = memberName();
         if (!name.text().equals(ownName)) {
-            error("invalid method declaration; return type required", name.range());
+            scan.error("invalid method declaration; return type required", name.range());
         } else if (interfaceLike()) {
-            error(noun(ownKeyword) + " has no constructors", name.range());
+            scan.error(HeaderChecks.INSTANCE.noun(ownKeyword) + " has no constructors", name.range());
         }
         final List<Parameter> parameters = parameters();
         final List<TypeText> thrown = thrown();
-        final TokenRange header = new TokenRange(start, last + 1);
-        docs.flush(at, doc);
-        final boolean bodiless = is(";");
+        final TokenRange header = new TokenRange(start, scan.last() + 1);
+        scan.docs.flush(scan.at(), doc);
+        final boolean bodiless = scan.is(";");
         final Optional<TokenRange> body = methodBody();
         final Modifiers written = new Modifiers(modifiers);
-        checkModifiers(written, ownKeyword instanceof TypeKeyword.Enum ? Set.of("private")
+        HeaderChecks.INSTANCE.checkModifiers(scan, written, ownKeyword instanceof TypeKeyword.Enum ? Set.of("private")
                 : Set.of("public", "protected", "private"), false, header);
         if (bodiless) {
-            error("missing method body, or declare abstract", header);
+            scan.error("missing method body, or declare abstract", header);
         }
         found(doc.map(DocComment::token).orElse(start), range -> new BodyPart.Constructor(doc, written,
                 new TypeParameters(typeParameters), name, new Parameters(parameters), new TypeTexts(thrown), body,
@@ -265,15 +273,15 @@ final class BodyScan extends TokenScan {
                                     final List<ModifierItem> modifiers) {
         final Name name = memberName();
         if (!(ownKeyword instanceof TypeKeyword.Record)) {
-            error("only a record has a compact constructor", name.range());
+            scan.error("only a record has a compact constructor", name.range());
         } else if (!name.text().equals(ownName)) {
-            error("invalid method declaration; return type required", name.range());
+            scan.error("invalid method declaration; return type required", name.range());
         }
-        final TokenRange header = new TokenRange(start, last + 1);
-        docs.flush(at, doc);
+        final TokenRange header = new TokenRange(start, scan.last() + 1);
+        scan.docs.flush(scan.at(), doc);
         final TokenRange body = block();
         final Modifiers written = new Modifiers(modifiers);
-        checkModifiers(written, Set.of("public", "protected", "private"), false, header);
+        HeaderChecks.INSTANCE.checkModifiers(scan, written, Set.of("public", "protected", "private"), false, header);
         found(doc.map(DocComment::token).orElse(start), range -> new BodyPart.CompactConstructor(doc, written, name,
                 body, range));
     }
@@ -283,13 +291,13 @@ final class BodyScan extends TokenScan {
         final List<Parameter> parameters = parameters();
         final TokenRange dimensions = dimensions();
         final List<TypeText> thrown = thrown();
-        final TokenRange header = new TokenRange(start, last + 1);
-        docs.flush(at, doc);
-        final boolean bodiless = is(";") || is("default");
+        final TokenRange header = new TokenRange(start, scan.last() + 1);
+        scan.docs.flush(scan.at(), doc);
+        final boolean bodiless = scan.is(";") || scan.is("default");
         final Optional<TokenRange> defaultValue;
         final Optional<TokenRange> body;
-        if (is("default")) {
-            advance();
+        if (scan.is("default")) {
+            scan.advance();
             defaultValue = Optional.of(elementValue());
             body = Optional.empty();
             semicolon();
@@ -298,23 +306,23 @@ final class BodyScan extends TokenScan {
             body = methodBody();
         }
         final Modifiers written = new Modifiers(modifiers);
-        checkModifiers(written, methodModifiers(written), false, header);
+        HeaderChecks.INSTANCE.checkModifiers(scan, written, methodModifiers(written), false, header);
         notVar(result);
         if (ownKeyword instanceof TypeKeyword.Annotation) {
             if (!typeParameters.isEmpty()) {
-                error("elements in annotation interface declarations cannot be generic methods",
+                scan.error("elements in annotation interface declarations cannot be generic methods",
                         typeParameters.getFirst().range().from(), typeParameters.getLast().range().to());
             }
             if (!parameters.isEmpty()) {
-                error("elements in annotation interface declarations cannot declare formal parameters",
+                scan.error("elements in annotation interface declarations cannot declare formal parameters",
                         parameters.getFirst().range().from(), parameters.getLast().range().to());
             }
             if (!thrown.isEmpty()) {
-                error("throws clause not allowed in @interface members", thrown.getFirst().range().from(),
+                scan.error("throws clause not allowed in @interface members", thrown.getFirst().range().from(),
                         thrown.getLast().range().to());
             }
         } else if (defaultValue.isPresent()) {
-            error("default value only allowed in an annotation interface declaration", header);
+            scan.error("default value only allowed in an annotation interface declaration", header);
         }
         if (defaultValue.isEmpty() && (bodiless || body.isPresent())) {
             checkBody(written, body, header);
@@ -351,9 +359,9 @@ final class BodyScan extends TokenScan {
                     || modifiers.has("native");
         };
         if (body.isEmpty() && !declaredOnly) {
-            error("missing method body, or declare abstract", header);
+            scan.error("missing method body, or declare abstract", header);
         } else if (body.isPresent() && declaredOnly) {
-            error(interfaceLike() ? "interface abstract methods cannot have body"
+            scan.error(interfaceLike() ? "interface abstract methods cannot have body"
                     : modifiers.has("abstract") ? "abstract methods cannot have a body"
                     : "native methods cannot have a body", body.get());
         }
@@ -365,36 +373,36 @@ final class BodyScan extends TokenScan {
         Name name = first;
         while (true) {
             final TokenRange dimensions = dimensions();
-            docs.flush(at, doc);
+            scan.docs.flush(scan.at(), doc);
             Optional<TokenRange> initializer = Optional.empty();
-            if (is("=")) {
-                advance();
+            if (scan.is("=")) {
+                scan.advance();
                 final TokenRange expression = expression();
                 if (expression.isEmpty()) {
-                    error("illegal start of expression", at, Math.min(at + 1, size()));
+                    scan.error("illegal start of expression", scan.at(), Math.min(scan.at() + 1, scan.size()));
                 } else {
-                    unread.add(expression);
+                    scan.unread.add(expression);
                     initializer = Optional.of(expression);
                 }
             } else if (interfaceLike()) {
-                error("= expected", at, Math.min(at + 1, size()));
+                scan.error("= expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
             }
             declarators.add(new Declarator(name, dimensions, initializer,
-                    new TokenRange(name.range().from(), Math.max(name.range().from(), last + 1))));
-            if (!is(",")) {
+                    new TokenRange(name.range().from(), Math.max(name.range().from(), scan.last() + 1))));
+            if (!scan.is(",")) {
                 break;
             }
-            advance();
+            scan.advance();
             name = memberName();
         }
         semicolon();
         final Modifiers written = new Modifiers(modifiers);
-        checkModifiers(written, interfaceLike() ? Set.of("public", "static", "final")
+        HeaderChecks.INSTANCE.checkModifiers(scan, written, interfaceLike() ? Set.of("public", "static", "final")
                 : Set.of("public", "protected", "private", "static", "final", "transient", "volatile"), false,
-                new TokenRange(start, last + 1));
+                new TokenRange(start, scan.last() + 1));
         notVar(fieldType);
         if (ownKeyword instanceof TypeKeyword.Record && !written.has("static")) {
-            error("field declaration must be static (consider replacing field with record component)",
+            scan.error("field declaration must be static (consider replacing field with record component)",
                     first.range());
         }
         final Declarators read = new Declarators(declarators);
@@ -405,26 +413,26 @@ final class BodyScan extends TokenScan {
     /** The parameters, in their parentheses (JLS 8.4.1): the receiver first, if it is written, and the formal ones. */
     private List<Parameter> parameters() {
         final List<Parameter> parameters = new ArrayList<>();
-        advance();
-        while (at < size() && !is(")")) {
+        scan.advance();
+        while (scan.at() < scan.size() && !scan.is(")")) {
             final Optional<Parameter> parameter = parameter(parameters.isEmpty());
             if (parameter.isEmpty()) {
                 closeParameters();
                 return parameters;
             }
             parameters.add(parameter.get());
-            if (is(",")) {
-                advance();
-            } else if (!is(")")) {
-                error("',', ')', or '[' expected", at, Math.min(at + 1, size()));
+            if (scan.is(",")) {
+                scan.advance();
+            } else if (!scan.is(")")) {
+                scan.error("',', ')', or '[' expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
                 closeParameters();
                 return parameters;
             }
         }
-        if (is(")")) {
-            advance();
+        if (scan.is(")")) {
+            scan.advance();
         } else {
-            error("')' expected", at, Math.min(at + 1, size()));
+            scan.error("')' expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
         }
         checkVariableArity(parameters);
         return parameters;
@@ -432,48 +440,50 @@ final class BodyScan extends TokenScan {
 
     /** One parameter, the receiver or a formal one; none, when no type is written where its type would be. */
     private Optional<Parameter> parameter(final boolean first) {
-        final int start = at;
-        final List<ModifierItem> modifiers = modifiers();
+        final int start = scan.at();
+        final List<ModifierItem> modifiers = scan.modifiers();
         TypeText parameterType = type();
         if (parameterType.range().isEmpty()) {
             return Optional.empty();
         }
-        final boolean variable = is(pastAnnotations(at), "...");
+        final boolean variable = scan.is(pastAnnotations(scan.at()), "...");
         if (variable) {
-            while (is("@")) {
-                annotation();
+            while (scan.is("@")) {
+                scan.annotation();
             }
-            parameterType = new TypeText(new TokenRange(parameterType.range().from(), last + 1));
-            advance();
+            parameterType = new TypeText(new TokenRange(parameterType.range().from(), scan.last() + 1));
+            scan.advance();
         }
-        if (is("this") || identifier(at) && is(next(at), ".") && is(next(next(at)), "this")) {
+        if (scan.is("this") || scan.identifier(scan.at()) && scan.is(scan.next(scan.at()), ".")
+                && scan.is(scan.next(scan.next(scan.at())), "this")) {
             return Optional.of(receiver(start, modifiers, parameterType, first));
         }
         final Name name = memberName();
         final TokenRange dimensions = dimensions();
         final Modifiers written = new Modifiers(modifiers);
-        checkModifiers(written, Set.of("final"), false, new TokenRange(start, last + 1));
+        HeaderChecks.INSTANCE.checkModifiers(scan, written, Set.of("final"), false,
+                new TokenRange(start, scan.last() + 1));
         return Optional.of(new Parameter.Formal(written, parameterType, variable, name, dimensions,
-                new TokenRange(start, last + 1)));
+                new TokenRange(start, scan.last() + 1)));
     }
 
     /** The receiver parameter, from its name on: {@code this}, alone or after a class's name (JLS 8.4.1). */
     private Parameter.Receiver receiver(final int start, final List<ModifierItem> modifiers,
                                         final TypeText parameterType, final boolean first) {
-        annotationsOnly(modifiers);
+        scan.annotationsOnly(modifiers);
         if (!first) {
-            error("'this' names the receiver parameter only, which comes first", at, at + 1);
+            scan.error("'this' names the receiver parameter only, which comes first", scan.at(), scan.at() + 1);
         }
-        final int nameStart = at;
+        final int nameStart = scan.at();
         final StringBuilder text = new StringBuilder();
-        while (!is("this")) {
-            text.append(text(at));
-            advance();
+        while (!scan.is("this")) {
+            text.append(scan.text(scan.at()));
+            scan.advance();
         }
-        advance();
+        scan.advance();
         return new Parameter.Receiver(new Modifiers(modifiers), parameterType,
-                new Name(text.append("this").toString(), new TokenRange(nameStart, last + 1)),
-                new TokenRange(start, last + 1));
+                new Name(text.append("this").toString(), new TokenRange(nameStart, scan.last() + 1)),
+                new TokenRange(start, scan.last() + 1));
     }
 
     /** Only the last formal parameter may be a variable arity one. */
@@ -481,7 +491,7 @@ final class BodyScan extends TokenScan {
         final List<Parameter.Formal> formal = new Parameters(parameters).formal();
         for (int index = 0; index + 1 < formal.size(); index++) {
             if (formal.get(index).variable()) {
-                error("varargs parameter must be the last parameter", formal.get(index).range());
+                scan.error("varargs parameter must be the last parameter", formal.get(index).range());
             }
         }
     }
@@ -489,35 +499,35 @@ final class BodyScan extends TokenScan {
     /** Steps over the parenthesis that closes the parameters; or up to a brace or a semicolon, which none can hold. */
     private void closeParameters() {
         int depth = 0;
-        while (at < size() && !is("{") && !is(";")) {
-            if (is("(")) {
+        while (scan.at() < scan.size() && !scan.is("{") && !scan.is(";")) {
+            if (scan.is("(")) {
                 depth++;
-            } else if (is(")") && depth-- == 0) {
-                advance();
+            } else if (scan.is(")") && depth-- == 0) {
+                scan.advance();
                 return;
             }
-            advance();
+            scan.advance();
         }
     }
 
     private List<TypeText> thrown() {
-        if (!is("throws")) {
+        if (!scan.is("throws")) {
             return List.of();
         }
-        advance();
-        return types(",", Set.of());
+        scan.advance();
+        return TypeHeaders.INSTANCE.types(scan, ",", Set.of());
     }
 
     /** A method's body, if a brace opens one; none if a semicolon is written in its place, which is stepped over. */
     private Optional<TokenRange> methodBody() {
-        if (is("{")) {
+        if (scan.is("{")) {
             return Optional.of(block());
         }
-        if (is(";")) {
-            advance();
+        if (scan.is(";")) {
+            scan.advance();
             return Optional.empty();
         }
-        error("'{' or ';' expected", at, Math.min(at + 1, size()));
+        scan.error("'{' or ';' expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
         recover();
         return Optional.empty();
     }
@@ -528,90 +538,92 @@ final class BodyScan extends TokenScan {
      * annotated. An empty range, and a diagnostic, where no type starts.
      */
     private TypeText type() {
-        final int start = at;
-        if (keyword(at) && (primitive(text(at)) || is("void"))) {
-            advance();
-        } else if (identifier(at)) {
-            advance();
+        final int start = scan.at();
+        if (scan.keyword(scan.at()) && (scan.primitive(scan.text(scan.at())) || scan.is("void"))) {
+            scan.advance();
+        } else if (scan.identifier(scan.at())) {
+            scan.advance();
             while (true) {
-                if (is("<")) {
+                if (scan.is("<")) {
                     typeArguments();
-                } else if (is(".") && identifier(pastAnnotations(next(at)))) {
-                    advance();
-                    while (is("@")) {
-                        annotation();
+                } else if (scan.is(".") && scan.identifier(pastAnnotations(scan.next(scan.at())))) {
+                    scan.advance();
+                    while (scan.is("@")) {
+                        scan.annotation();
                     }
-                    advance();
+                    scan.advance();
                 } else {
                     break;
                 }
             }
         } else {
-            error("<identifier> expected", at, Math.min(at + 1, size()));
+            scan.error("<identifier> expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
             return new TypeText(new TokenRange(start, start));
         }
         dimensions();
-        return new TypeText(new TokenRange(start, last + 1));
+        return new TypeText(new TokenRange(start, scan.last() + 1));
     }
 
     private boolean typeStart(final int index) {
-        return identifier(index) || keyword(index) && (primitive(text(index)) || is(index, "void"));
+        return scan.identifier(index)
+                || scan.keyword(index) && (scan.primitive(scan.text(index)) || scan.is(index, "void"));
     }
 
     /** Steps over type arguments, in their angle brackets; a diagnostic where none closes them before a type ends. */
     private void typeArguments() {
-        final int open = at;
+        final int open = scan.at();
         int depth = 0;
-        while (at < size() && !is(";") && !is("{") && !is("=") && !is(")")) {
-            if (is("@")) {
-                annotation();
+        while (scan.at() < scan.size() && !scan.is(";") && !scan.is("{") && !scan.is("=") && !scan.is(")")) {
+            if (scan.is("@")) {
+                scan.annotation();
                 continue;
             }
-            if (is("<")) {
+            if (scan.is("<")) {
                 depth++;
-            } else if (is(">") && --depth == 0) {
-                advance();
+            } else if (scan.is(">") && --depth == 0) {
+                scan.advance();
                 return;
             }
-            advance();
+            scan.advance();
         }
-        error("'>' expected", open, last + 1);
+        scan.error("'>' expected", open, scan.last() + 1);
     }
 
     /** Brackets written after a type or a name, each pair perhaps annotated: an empty range where there are none. */
     private TokenRange dimensions() {
-        final int start = at;
-        while (is(pastAnnotations(at), "[") && is(next(pastAnnotations(at)), "]")) {
-            while (is("@")) {
-                annotation();
+        final int start = scan.at();
+        while (scan.is(pastAnnotations(scan.at()), "[") && scan.is(scan.next(pastAnnotations(scan.at())), "]")) {
+            while (scan.is("@")) {
+                scan.annotation();
             }
-            advance();
-            advance();
+            scan.advance();
+            scan.advance();
         }
-        return new TokenRange(start, at == start ? start : last + 1);
+        return new TokenRange(start, scan.at() == start ? start : scan.last() + 1);
     }
 
     /** The token after the annotations written from the index on: the index itself, when none is. */
     private int pastAnnotations(final int from) {
         int index = from;
-        while (is(index, "@") && !is(next(index), "interface")) {
-            index = next(index);
-            while (identifier(index) && is(next(index), ".") && identifier(next(next(index)))) {
-                index = next(next(index));
+        while (scan.is(index, "@") && !scan.is(scan.next(index), "interface")) {
+            index = scan.next(index);
+            while (scan.identifier(index) && scan.is(scan.next(index), ".")
+                    && scan.identifier(scan.next(scan.next(index)))) {
+                index = scan.next(scan.next(index));
             }
-            if (identifier(index)) {
-                index = next(index);
+            if (scan.identifier(index)) {
+                index = scan.next(index);
             }
-            if (is(index, "(")) {
+            if (scan.is(index, "(")) {
                 int depth = 0;
-                while (index < size() && !is(index, ";")) {
-                    if (is(index, "(")) {
+                while (index < scan.size() && !scan.is(index, ";")) {
+                    if (scan.is(index, "(")) {
                         depth++;
-                    } else if (is(index, ")") && --depth == 0) {
-                        index = next(index);
+                    } else if (scan.is(index, ")") && --depth == 0) {
+                        index = scan.next(index);
                         break;
                     }
-                    index = next(index);
+                    index = scan.next(index);
                 }
             }
         }
@@ -624,28 +636,28 @@ final class BodyScan extends TokenScan {
      * not end it: {@code new HashMap<String, Integer>()}.
      */
     private TokenRange expression() {
-        final int start = at;
+        final int start = scan.at();
         int depth = 0;
-        while (at < size() && !(depth == 0 && (is(",") || is(";")))) {
-            if (is("(") || is("[") || is("{")) {
+        while (scan.at() < scan.size() && !(depth == 0 && (scan.is(",") || scan.is(";")))) {
+            if (scan.is("(") || scan.is("[") || scan.is("{")) {
                 depth++;
-            } else if (is(")") || is("]") || is("}")) {
+            } else if (scan.is(")") || scan.is("]") || scan.is("}")) {
                 if (depth == 0) {
                     break;
                 }
                 depth--;
-            } else if (depth == 0 && is("<")) {
-                final int past = pastTypeArguments(at);
-                if (past > at) {
-                    while (at < past) {
-                        advance();
+            } else if (depth == 0 && scan.is("<")) {
+                final int past = pastTypeArguments(scan.at());
+                if (past > scan.at()) {
+                    while (scan.at() < past) {
+                        scan.advance();
                     }
                     continue;
                 }
             }
-            advance();
+            scan.advance();
         }
-        return new TokenRange(start, at == start ? start : last + 1);
+        return new TokenRange(start, scan.at() == start ? start : scan.last() + 1);
     }
 
     /**
@@ -655,86 +667,86 @@ final class BodyScan extends TokenScan {
     private int pastTypeArguments(final int from) {
         int depth = 0;
         int index = from;
-        while (index < size()) {
-            if (is(index, "<")) {
+        while (index < scan.size()) {
+            if (scan.is(index, "<")) {
                 depth++;
-            } else if (is(index, ">")) {
+            } else if (scan.is(index, ">")) {
                 if (--depth == 0) {
-                    return next(index);
+                    return scan.next(index);
                 }
-            } else if (is(index, "@")) {
+            } else if (scan.is(index, "@")) {
                 final int past = pastAnnotations(index);
                 if (past == index) {
                     return from;
                 }
                 index = past;
                 continue;
-            } else if (!(identifier(index) || is(index, ".") || is(index, ",") || is(index, "?") || is(index, "&")
-                    || is(index, "[") || is(index, "]") || is(index, "extends") || is(index, "super")
-                    || keyword(index) && primitive(text(index)))) {
+            } else if (!(scan.identifier(index) || scan.is(index, ".") || scan.is(index, ",") || scan.is(index, "?")
+                    || scan.is(index, "&") || scan.is(index, "[") || scan.is(index, "]") || scan.is(index, "extends")
+                    || scan.is(index, "super") || scan.keyword(index) && scan.primitive(scan.text(index)))) {
                 return from;
             }
-            index = next(index);
+            index = scan.next(index);
         }
         return from;
     }
 
     /** An annotation element's default value as written, up to its semicolon, outside the brackets it opens. */
     private TokenRange elementValue() {
-        final int start = at;
+        final int start = scan.at();
         int depth = 0;
-        while (at < size() && !(depth == 0 && is(";"))) {
-            if (is("(") || is("[") || is("{")) {
+        while (scan.at() < scan.size() && !(depth == 0 && scan.is(";"))) {
+            if (scan.is("(") || scan.is("[") || scan.is("{")) {
                 depth++;
-            } else if (is(")") || is("]") || is("}")) {
+            } else if (scan.is(")") || scan.is("]") || scan.is("}")) {
                 if (depth == 0) {
                     break;
                 }
                 depth--;
             }
-            advance();
+            scan.advance();
         }
-        if (at == start) {
-            error("illegal start of expression", at, Math.min(at + 1, size()));
+        if (scan.at() == start) {
+            scan.error("illegal start of expression", scan.at(), Math.min(scan.at() + 1, scan.size()));
             return new TokenRange(start, start);
         }
-        final TokenRange range = new TokenRange(start, last + 1);
-        unread.add(range);
+        final TokenRange range = new TokenRange(start, scan.last() + 1);
+        scan.unread.add(range);
         return range;
     }
 
     /** A member's name: one identifier; an empty name, and a diagnostic, where it is missing. */
     private Name memberName() {
-        if (!identifier(at)) {
-            error("<identifier> expected", at, Math.min(at + 1, size()));
-            return new Name("", new TokenRange(at, at));
+        if (!scan.identifier(scan.at())) {
+            scan.error("<identifier> expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
+            return new Name("", new TokenRange(scan.at(), scan.at()));
         }
-        final int index = at;
-        advance();
-        return new Name(text(index), new TokenRange(index, index + 1));
+        final int index = scan.at();
+        scan.advance();
+        return new Name(scan.text(index), new TokenRange(index, index + 1));
     }
 
     /** {@code var} infers a local variable's type; a member's is written. */
     private void notVar(final TypeText written) {
-        if (written.range().to() == written.range().from() + 1 && is(written.range().from(), "var")) {
-            error("'var' is not allowed here", written.range());
+        if (written.range().to() == written.range().from() + 1 && scan.is(written.range().from(), "var")) {
+            scan.error("'var' is not allowed here", written.range());
         }
     }
 
     /** Steps over the braces here and all between them, which are left unread. */
     private TokenRange block() {
-        final int open = at;
-        final TokenRange range = new TokenRange(open, skipBlock() ? last + 1 : size());
-        unread.add(range);
+        final int open = scan.at();
+        final TokenRange range = new TokenRange(open, scan.skipBlock() ? scan.last() + 1 : scan.size());
+        scan.unread.add(range);
         return range;
     }
 
     /** Steps over the parentheses here and all between them, which are left unread. */
     private TokenRange parenthesized() {
-        final int open = at;
-        skipParentheses();
-        final TokenRange range = new TokenRange(open, last + 1);
-        unread.add(range);
+        final int open = scan.at();
+        scan.skipParentheses();
+        final TokenRange range = new TokenRange(open, scan.last() + 1);
+        scan.unread.add(range);
         return range;
     }
 
@@ -743,20 +755,20 @@ final class BodyScan extends TokenScan {
     }
 
     private void unrecognised(final int start) {
-        error("illegal start of type", at, Math.min(at + 1, size()));
-        if (at == start) {
-            advance();
+        scan.error("illegal start of type", scan.at(), Math.min(scan.at() + 1, scan.size()));
+        if (scan.at() == start) {
+            scan.advance();
         }
         recover();
         found(start, BodyPart.Unrecognised::new);
     }
 
     private void semicolon() {
-        if (is(";")) {
-            advance();
+        if (scan.is(";")) {
+            scan.advance();
             return;
         }
-        error("';' expected", at, Math.min(at + 1, size()));
+        scan.error("';' expected", scan.at(), Math.min(scan.at() + 1, scan.size()));
         recover();
     }
 
@@ -765,24 +777,23 @@ final class BodyScan extends TokenScan {
      * token a part can start with.
      */
     private void recover() {
-        while (at < size() && !startsPart(at)) {
-            if (is("{")) {
-                skipBlock();
+        while (scan.at() < scan.size() && !startsPart(scan.at())) {
+            if (scan.is("{")) {
+                scan.skipBlock();
                 return;
             }
-            if (is(";")) {
-                advance();
+            if (scan.is(";")) {
+                scan.advance();
                 return;
             }
-            advance();
+            scan.advance();
         }
     }
 
-    @Override
-    boolean startsPart(final int index) {
-        return is(index, "@") || is(index, "class") || is(index, "interface") || is(index, "enum")
-                || is(index, "record") && identifier(next(index))
-                || keyword(index) && modifierWord(text(index));
+    private boolean startsPart(final int index) {
+        return scan.is(index, "@") || scan.is(index, "class") || scan.is(index, "interface") || scan.is(index, "enum")
+                || scan.is(index, "record") && scan.identifier(scan.next(index))
+                || scan.keyword(index) && scan.modifierWord(scan.text(index));
     }
 
     private void found(final int start, final Function<TokenRange, BodyPart> part) {
@@ -793,7 +804,7 @@ final class BodyScan extends TokenScan {
     private List<BodyPart> parts() {
         final List<BodyPart> made = new ArrayList<>();
         for (int index = 0; index < starts.size(); index++) {
-            final int end = index + 1 < starts.size() ? starts.get(index + 1) : size();
+            final int end = index + 1 < starts.size() ? starts.get(index + 1) : scan.size();
             made.add(parts.get(index).apply(new TokenRange(starts.get(index), end)));
         }
         return made;
