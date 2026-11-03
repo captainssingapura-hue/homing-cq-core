@@ -137,7 +137,7 @@ class BenchPaneTest {
         assertEquals(List.of(), FxThread.INSTANCE.call(() -> labels(child(cq, "scan")).stream()
                 .filter(label -> label.equals("rules")).toList()), "the rules are test code, left out");
         final int units = ClasspathUnits.INSTANCE.read(TAXONOMY, BenchPaneTest.class.getClassLoader()).size()
-                + ClasspathUnits.INSTANCE.main(List.of(SCAN), BenchPaneTest.class.getClassLoader()).size();
+                + ClasspathUnits.INSTANCE.main(List.of(SCAN), List.of(), BenchPaneTest.class.getClassLoader()).size();
         assertEquals(units, ((IndexEntry.Package) cq.getValue()).compliance().total());
         final String status = FxThread.INSTANCE.call(() -> bench.status().getText());
         assertTrue(status.startsWith(units + " units in 3 packages under " + TAXONOMY + ".scan, " + RULES + ", " + SCAN
@@ -744,7 +744,7 @@ class BenchPaneTest {
 
         LaidOut(final String rootPackages, final String rulesPackage, final List<BenchView> views,
                 final SourceView source) {
-            this(BenchPane.INSTANCE.content(rootPackages, List.of(new PackageRuleset(rulesPackage)),
+            this(BenchPane.INSTANCE.content(rootPackages, List.of(new PackageRuleset(rulesPackage)), List.of(),
                     BenchPaneTest.class.getClassLoader(), views, source));
             new Scene(root, 1280, 800);
             root.applyCss();

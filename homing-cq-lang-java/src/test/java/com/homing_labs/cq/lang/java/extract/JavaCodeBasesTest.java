@@ -6,7 +6,6 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -18,7 +17,7 @@ class JavaCodeBasesTest {
         final Path classes = Files.createDirectories(module.resolve("target/classes"));
         final Path sources = Files.createDirectories(module.resolve("src/main/java"));
 
-        assertEquals(new JavaCodeBase(classes.toUri(), Optional.of(sources.toUri())),
+        assertEquals(new JavaCodeBase(classes.toUri(), new SourceDirectories(sources.toUri())),
                 JavaCodeBases.INSTANCE.at(classes));
     }
 
@@ -28,7 +27,7 @@ class JavaCodeBasesTest {
         Files.createDirectories(module.resolve("src/main/java"));
         final Path sources = Files.createDirectories(module.resolve("src/test/java"));
 
-        assertEquals(new JavaCodeBase(classes.toUri(), Optional.of(sources.toUri())),
+        assertEquals(new JavaCodeBase(classes.toUri(), new SourceDirectories(sources.toUri())),
                 JavaCodeBases.INSTANCE.at(classes));
     }
 
@@ -38,7 +37,8 @@ class JavaCodeBasesTest {
         final Path jar = Files.createFile(module.resolve("target/module-1.0.jar"));
         final Path sources = Files.createDirectories(module.resolve("src/main/java"));
 
-        assertEquals(new JavaCodeBase(jar.toUri(), Optional.of(sources.toUri())), JavaCodeBases.INSTANCE.at(jar));
+        assertEquals(new JavaCodeBase(jar.toUri(), new SourceDirectories(sources.toUri())),
+                JavaCodeBases.INSTANCE.at(jar));
     }
 
     @Test
@@ -47,14 +47,14 @@ class JavaCodeBasesTest {
         Files.createDirectories(repository.resolve("module/src/main/java"));
         final Path jar = Files.createFile(repository.resolve("module/1.0/module-1.0.jar"));
 
-        assertEquals(new JavaCodeBase(jar.toUri(), Optional.empty()), JavaCodeBases.INSTANCE.at(jar));
+        assertEquals(new JavaCodeBase(jar.toUri(), new SourceDirectories()), JavaCodeBases.INSTANCE.at(jar));
     }
 
     @Test
     void aClassesFolderWithNoSourcesFolderHasNoSources(@TempDir final Path module) throws IOException {
         final Path classes = Files.createDirectories(module.resolve("target/classes"));
 
-        assertEquals(new JavaCodeBase(classes.toUri(), Optional.empty()), JavaCodeBases.INSTANCE.at(classes));
+        assertEquals(new JavaCodeBase(classes.toUri(), new SourceDirectories()), JavaCodeBases.INSTANCE.at(classes));
     }
 
     @Test

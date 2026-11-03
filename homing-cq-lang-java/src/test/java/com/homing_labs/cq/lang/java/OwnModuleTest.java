@@ -47,6 +47,8 @@ class OwnModuleTest {
                         "com.homing_labs.cq.lang.java.extract.MemberSources",
                         "com.homing_labs.cq.lang.java.extract.Overloads",
                         "com.homing_labs.cq.lang.java.extract.ReadBody",
+                        "com.homing_labs.cq.lang.java.extract.SourceDirectories",
+                        "com.homing_labs.cq.lang.java.extract.SourceDirectory",
                         "com.homing_labs.cq.lang.java.extract.SourceLocator",
                         "com.homing_labs.cq.lang.java.extract.SourceReading",
                         "com.homing_labs.cq.lang.java.extract.TypeNames",

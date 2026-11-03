@@ -20,6 +20,7 @@ import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.layout.BorderPane;
 
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -40,10 +41,11 @@ public record BenchPane() implements StatelessFunctionalObject {
 
     /**
      * The bench over the units under {@code rootPackages} - one package, or several apart by commas or spaces - as
-     * {@code loader} finds them in main code, checked by the rulesets, with these views.
+     * {@code loader} finds them in main code, with their sources from {@code sources} first, checked by the rulesets,
+     * with these views.
      */
-    public Parent content(final String rootPackages, final List<Ruleset> rulesets, final ClassLoader loader,
-                          final List<BenchView> views, final SourceView source) {
+    public Parent content(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
+                          final ClassLoader loader, final List<BenchView> views, final SourceView source) {
         final TreeView<IndexEntry> units = tree("units");
         units.setShowRoot(false);
         final TreeView<IndexEntry> nest = tree("nest");
@@ -66,7 +68,7 @@ public record BenchPane() implements StatelessFunctionalObject {
         final Label status = title("");
         status.setId("status");
         final Runnable scan = () -> {
-            scan(roots.getText(), rulesets, loader, units, views, status);
+            scan(roots.getText(), rulesets, sources, loader, units, views, status);
             nest.setRoot(null);
             views.forEach(view -> view.show(Optional.empty()));
             source.show(Optional.empty());
@@ -92,12 +94,13 @@ public record BenchPane() implements StatelessFunctionalObject {
      * Scans the root packages by the rulesets, and shows what it found in the tree; or, if it cannot, says why and
      * shows none.
      */
-    private void scan(final String rootPackages, final List<Ruleset> rulesets, final ClassLoader loader,
-                      final TreeView<IndexEntry> units, final List<BenchView> views, final Label status) {
+    private void scan(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
+                      final ClassLoader loader, final TreeView<IndexEntry> units, final List<BenchView> views,
+                      final Label status) {
         final List<String> roots = Arrays.stream(rootPackages.split("[,\\s]+")).filter(root -> !root.isEmpty())
                 .distinct().toList();
         try {
-            final ScanResult result = Scanner.INSTANCE.scan(roots, rulesets, loader);
+            final ScanResult result = Scanner.INSTANCE.scan(roots, rulesets, sources, loader);
             views.forEach(view -> view.scanned(result));
             final List<ScannedUnit> found = result.units().items();
             units.setRoot(UnitTree.INSTANCE.of(found));

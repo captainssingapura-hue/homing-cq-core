@@ -32,7 +32,7 @@ class TheFrameworkHoldsToTheDemoRulesTest {
             ObjectKind.class, JavaLexer.class, JavaOutliner.class, Scanner.class, Bench.class, NoStaticMethods.class);
 
     private final ScanResult result = Scanner.INSTANCE.scan(List.of("com.homing_labs.cq"),
-            List.of(DemoRules.INSTANCE), getClass().getClassLoader());
+            List.of(DemoRules.INSTANCE), List.of(), getClass().getClassLoader());
 
     @Test
     void everyModuleIsReadWithItsSources() {

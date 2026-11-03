@@ -23,8 +23,8 @@ import java.util.stream.Stream;
 
 /**
  * Reads the units of a module: every top-level class compiled into its code base, each loaded by its name without
- * being initialised, made a unit of its kind, and paired with the source file that declares it when the code base has
- * sources.
+ * being initialised, made a unit of its kind, and paired with the source file that declares it, from the first of the
+ * code base's source directories that has it.
  *
  * <p>Build-time code: this is where classes are loaded by name. Each class file is first read with the Class-File API,
  * to tell a top-level class from a nested one and to learn which file declares it (its {@code SourceFile}), so only
@@ -43,7 +43,8 @@ public record JavaUnitReader() implements StatelessFunctionalObject {
     /** The units of a code base, sorted by class name, each class loaded by {@code loader}. */
     public List<JavaUnit> read(final JavaCodeBase base, final ClassLoader loader) {
         final Path classes = Path.of(base.classes());
-        final Optional<Path> sources = base.sources().map(Path::of);
+        final List<Path> sources = base.sources().items().stream().map(directory -> Path.of(directory.location()))
+                .toList();
         if (Files.isDirectory(classes)) {
             return readUnder(classes, sources, loader);
         }
@@ -54,7 +55,7 @@ public record JavaUnitReader() implements StatelessFunctionalObject {
         }
     }
 
-    private List<JavaUnit> readUnder(final Path root, final Optional<Path> sources, final ClassLoader loader) {
+    private List<JavaUnit> readUnder(final Path root, final List<Path> sources, final ClassLoader loader) {
         try (Stream<Path> files = Files.walk(root)) {
             return files
                     .filter(file -> isClassFile(root, file))
@@ -96,11 +97,13 @@ public record JavaUnitReader() implements StatelessFunctionalObject {
         return Optional.of(new TopLevelClass(name, sourceFile));
     }
 
-    private JavaUnit unit(final TopLevelClass found, final Optional<Path> sources, final ClassLoader loader) {
+    /** A unit, with its source from the first of the directories that has it. */
+    private JavaUnit unit(final TopLevelClass found, final List<Path> sources, final ClassLoader loader) {
         final Class<?> type = load(found.binaryName(), loader);
-        return JavaUnits.INSTANCE.of(type, sources
+        return JavaUnits.INSTANCE.of(type, sources.stream()
                 .map(root -> root.resolve(found.packagePath()).resolve(found.sourceFile()))
                 .filter(Files::isRegularFile)
+                .findFirst()
                 .map(file -> new JavaSource(file.toUri(), text(file))));
     }
 

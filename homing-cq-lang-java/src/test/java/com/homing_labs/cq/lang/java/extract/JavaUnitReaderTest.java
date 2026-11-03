@@ -25,7 +25,6 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -122,7 +121,7 @@ class JavaUnitReaderTest {
         try (URLClassLoader loader = new URLClassLoader(new URL[]{classes.toUri().toURL()},
                 ClassLoader.getPlatformClassLoader())) {
             assertEquals(List.of(Plain.class.getName()), names(JavaUnitReader.INSTANCE.read(
-                    new JavaCodeBase(classes.toUri(), Optional.empty()), loader)));
+                    new JavaCodeBase(classes.toUri(), new SourceDirectories()), loader)));
         }
     }
 
@@ -159,6 +158,23 @@ class JavaUnitReaderTest {
                 assertEquals(loader, unit.type().getClassLoader(),
                         unit.type().getName() + " was not loaded from the jar");
             }
+        }
+    }
+
+    @Test
+    void aSourceIsFoundInTheFirstOfTheDirectoriesGivenThatHasIt(@TempDir final Path temp) throws Exception {
+        final Path jar = copyOfFixturesAsJar(temp.resolve("fixtures.jar"));
+        final Path empty = Files.createDirectories(temp.resolve("no-sources"));
+        final SourceDirectories written = JavaCodeBases.INSTANCE.of(Plain.class).sources();
+        try (URLClassLoader loader = new URLClassLoader(new URL[]{jar.toUri().toURL()},
+                ClassLoader.getPlatformClassLoader())) {
+            final List<JavaUnit> fromJar = JavaUnitReader.INSTANCE.read(new JavaCodeBase(jar.toUri(),
+                    new SourceDirectories(empty.toUri()).then(written)), loader);
+
+            assertEquals(names(units), names(fromJar));
+            assertTrue(fromJar.stream().allMatch(unit -> unit.source().isPresent()), "a unit without its source");
+            assertEquals(units.stream().map(JavaUnit::source).toList(),
+                    fromJar.stream().map(JavaUnit::source).toList());
         }
     }
 

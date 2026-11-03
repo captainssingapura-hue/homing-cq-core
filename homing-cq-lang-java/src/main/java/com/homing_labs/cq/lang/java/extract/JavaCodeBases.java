@@ -35,9 +35,10 @@ public record JavaCodeBases() implements StatelessFunctionalObject {
         }
     }
 
-    /** The code base whose compiled classes are at {@code classes}, a directory or a jar. */
+    /** The code base whose classes are at {@code classes}, a directory or a jar, with the sources beside them. */
     public JavaCodeBase at(final Path classes) {
-        return new JavaCodeBase(classes.toUri(), sourcesBeside(classes).map(Path::toUri));
+        return new JavaCodeBase(classes.toUri(), new SourceDirectories(sourcesBeside(classes).stream()
+                .map(sources -> new SourceDirectory(sources.toUri())).toList()));
     }
 
     private Optional<Path> sourcesBeside(final Path classes) {
