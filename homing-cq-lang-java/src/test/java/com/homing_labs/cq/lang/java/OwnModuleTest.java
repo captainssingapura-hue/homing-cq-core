@@ -39,6 +39,7 @@ class OwnModuleTest {
                         "com.homing_labs.cq.lang.java.extract.ClassFileAttributes",
                         "com.homing_labs.cq.lang.java.extract.ClassFileTypes",
                         "com.homing_labs.cq.lang.java.extract.HeaderSources",
+                        "com.homing_labs.cq.lang.java.extract.ImpliedMembers",
                         "com.homing_labs.cq.lang.java.extract.Initialisers",
                         "com.homing_labs.cq.lang.java.extract.JavaCodeBase",
                         "com.homing_labs.cq.lang.java.extract.JavaCodeBases",

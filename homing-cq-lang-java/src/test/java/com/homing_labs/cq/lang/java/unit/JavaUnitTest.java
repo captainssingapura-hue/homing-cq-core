@@ -60,9 +60,9 @@ class JavaUnitTest {
         assertEquals(objects(ClassFileAttributes.INSTANCE.of(Plain.class)), objects(unit.attributes()),
                 "the values its class files hold");
         assertEquals(Optional.of(source), unit.source());
-        assertInstanceOf(ProcessedSource.Unwritten.class,
-                unit.attributes().entry(Constructor.INSTANCE).all().getFirst().source(),
-                "each with its source: the default constructor is written nowhere");
+        assertEquals("class Plain", assertInstanceOf(ProcessedSource.Implied.class,
+                unit.attributes().entry(Constructor.INSTANCE).all().getFirst().source()).by().text(),
+                "each with its source: the default constructor is implied by the class's header");
         assertEquals(new WithSource<>(ClassInitialisation.None.INSTANCE, new ProcessedSource.Unwritten<>()),
                 unit.initialisation(), "beside them, how it is initialised: no code runs, and none is written");
         assertEquals(ClassFileAttributes.INSTANCE.of(Plain.class), JavaUnits.INSTANCE.of(Plain.class,

@@ -13,8 +13,10 @@ import com.homing_labs.cq.lang.java.model.ProcessedSource;
 import com.homing_labs.cq.lang.java.model.WrittenParameter;
 import com.homing_labs.cq.lang.java.model.WrittenParameters;
 import com.homing_labs.cq.lang.java.outline.BodyPart;
+import com.homing_labs.cq.lang.java.outline.CodeBlock;
 import com.homing_labs.cq.lang.java.outline.Declarator;
 import com.homing_labs.cq.lang.java.outline.Parameter;
+import hue.captains.singapura.tao.ontology.Scalar;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
 import java.util.List;
@@ -22,13 +24,14 @@ import java.util.Optional;
 
 /**
  * The source of what a class's body has as its members: a field, an enum constant, a method, a constructor or a
- * member class, each where the body writes it - or written nowhere, when the compiler generates it.
+ * member class, each where the body writes it; or implied by what the declaration writes, when the language declares
+ * it ({@link ImpliedMembers}); or written nowhere, when the compiler generates it.
  */
 record MemberSources() implements StatelessFunctionalObject {
 
     static final MemberSources INSTANCE = new MemberSources();
 
-    ProcessedSource<FieldValue> field(final ReadBody body, final FieldValue value) {
+    ProcessedSource<FieldValue> field(final Declared declared, final ReadBody body, final FieldValue value) {
         if (generated(value.origin())) {
             return new ProcessedSource.Unwritten<>();
         }
@@ -42,7 +45,7 @@ record MemberSources() implements StatelessFunctionalObject {
                 }
             }
         }
-        return new ProcessedSource.Unwritten<>();
+        return impliedOrUnwritten(ImpliedMembers.INSTANCE.field(declared, value));
     }
 
     ProcessedSource<EnumConstantValue> enumConstant(final ReadBody body, final EnumConstantValue value) {
@@ -56,13 +59,16 @@ record MemberSources() implements StatelessFunctionalObject {
                 .orElseGet(ProcessedSource.Unwritten::new);
     }
 
-    ProcessedSource<MethodValue> method(final ReadBody body, final MethodValue value) {
+    ProcessedSource<MethodValue> method(final Declared declared, final ReadBody body, final MethodValue value) {
         if (generated(value.origin())) {
             return new ProcessedSource.Unwritten<>();
         }
         final Lexed lexed = body.lexed();
         final Optional<Candidate> found = Overloads.INSTANCE.written(body, value);
-        if (found.isEmpty() || !(found.get().part() instanceof BodyPart.Method method)) {
+        if (found.isEmpty()) {
+            return impliedOrUnwritten(ImpliedMembers.INSTANCE.method(declared, value));
+        }
+        if (!(found.get().part() instanceof BodyPart.Method method)) {
             return new ProcessedSource.Unwritten<>();
         }
         return new ProcessedSource.OfMethod(lexed.block(found.get().range()), lexed.doc(method.doc()),
@@ -79,7 +85,7 @@ record MemberSources() implements StatelessFunctionalObject {
         final Lexed lexed = body.lexed();
         final Optional<Candidate> found = Overloads.INSTANCE.written(declared, body, value);
         if (found.isEmpty()) {
-            return new ProcessedSource.Unwritten<>();
+            return impliedOrUnwritten(ImpliedMembers.INSTANCE.constructor(declared, body, value));
         }
         final Candidate candidate = found.get();
         final CodeBlocks initialisers = Initialisers.INSTANCE.delegates(lexed, candidate) ? new CodeBlocks(List.of())
@@ -121,6 +127,11 @@ record MemberSources() implements StatelessFunctionalObject {
         return new WrittenParameters(parameters.stream()
                 .map(parameter -> new WrittenParameter(parameter.name().text(), lexed.block(parameter.range())))
                 .toList());
+    }
+
+    /** A member the body does not write: implied by the code that implies it, or else written nowhere. */
+    private <T extends Scalar> ProcessedSource<T> impliedOrUnwritten(final Optional<CodeBlock> by) {
+        return by.<ProcessedSource<T>>map(ProcessedSource.Implied::new).orElseGet(ProcessedSource.Unwritten::new);
     }
 
     private boolean generated(final Origin origin) {

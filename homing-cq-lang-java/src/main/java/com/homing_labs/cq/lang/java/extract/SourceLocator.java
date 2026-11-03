@@ -123,11 +123,11 @@ public record SourceLocator() implements StatelessFunctionalObject {
                     inBody(where, (declared, body) -> new ProcessedSource.Within<>(
                             reading.enclosing(inClass, declared, body, enclosed.enclosure()))));
             case FieldValue field ->
-                    new WithSource<>(field, inBody(where, (declared, body) -> members.field(body, field)));
+                    new WithSource<>(field, inBody(where, (declared, body) -> members.field(declared, body, field)));
             case EnumConstantValue constant ->
                     new WithSource<>(constant, inBody(where, (declared, body) -> members.enumConstant(body, constant)));
             case MethodValue method ->
-                    new WithSource<>(method, inBody(where, (declared, body) -> members.method(body, method)));
+                    new WithSource<>(method, inBody(where, (declared, body) -> members.method(declared, body, method)));
             case ConstructorValue constructor -> new WithSource<>(constructor,
                     inBody(where, (declared, body) -> members.constructor(declared, body, constructor)));
             case Visibility visibility -> new WithSource<>(visibility, inHeader(where, headers::visibility));

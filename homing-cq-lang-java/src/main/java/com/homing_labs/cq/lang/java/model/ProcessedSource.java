@@ -98,10 +98,18 @@ public sealed interface ProcessedSource<T extends Scalar> extends Scalar {
     }
 
     /**
-     * Written nowhere: the compiler implied or generated it - an enum's {@code values()}, a record's accessors, a
-     * default constructor, a bridge method, a class's initialisation that only sets up its {@code assert}s - or it is
-     * nothing to write, as a class's initialisation that runs no code, or the source is not the one the class was
-     * compiled from.
+     * Implied by the language from what is written: the code {@code by}. A record's component implies its field and its
+     * accessor, a record's header its {@code equals}, {@code hashCode}, {@code toString} and canonical constructor, an
+     * enum's header its {@code values()} and {@code valueOf}, and a class's header the constructor its body writes
+     * none of - each unless the body writes it itself.
+     */
+    record Implied<T extends Scalar>(CodeBlock by) implements ProcessedSource<T> {
+    }
+
+    /**
+     * Written nowhere: the compiler generated it - a bridge method, a class's initialisation that only sets up its
+     * {@code assert}s - or it is nothing to write, as a class's initialisation that runs no code, or the source is not
+     * the one the class was compiled from.
      */
     record Unwritten<T extends Scalar>() implements ProcessedSource<T> {
     }

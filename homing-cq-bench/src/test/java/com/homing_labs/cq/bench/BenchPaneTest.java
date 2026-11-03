@@ -400,7 +400,8 @@ class BenchPaneTest {
                                 + " case SUNDAY: return 1; default: return 0; } }"),
                 highlighted(source, selected, Optional.of(values(unit, fixture, Method.Implementation.INSTANCE,
                         value -> value instanceof MethodValue method && method.name().equals("weekend")))));
-        assertEquals(List.of("Constructor of NestFixture: written nowhere: the compiler implied or generated it."),
+        assertEquals(List.of("Constructor of NestFixture: implied by the highlighted declaration: the language declares"
+                        + " it.", "class NestFixture"),
                 highlighted(source, selected, Optional.of(values(unit, fixture, Constructor.INSTANCE, any -> true))));
         final List<String> code = highlighted(source, selected, Optional.of(values(unit, fixture,
                 Dependency.Code.INSTANCE, any -> true)));

@@ -284,14 +284,16 @@ class SourceLocatorTest {
                 parameters(3));
         assertEquals("PlacedEnum(final String label) { this.label = label; }", squashed(labelled.block()));
         assertEquals(List.of("label"), names(labelled.parameters()));
-        assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedEnum.class,
-                StaticMethod.Implementation.INSTANCE, value -> ((MethodValue) value).name().equals("values")));
+        for (final String method : List.of("values", "valueOf")) {
+            assertEquals("enum PlacedEnum", implied(sourceOf(PlacedEnum.class, StaticMethod.Implementation.INSTANCE,
+                    value -> ((MethodValue) value).name().equals(method))), method + ", implied by the enum's header");
+        }
         assertEquals(List.of(two), within(sourceOf(PlacedEnum.class, AnonymousClass.INSTANCE, any -> true)),
                 "a constant's body is a class made in the static initialiser");
     }
 
     @Test
-    void aRecordsComponentsAndCompactConstructorAreWrittenAndWhatJavacAddsIsNot() {
+    void aRecordsComponentsCompactConstructorAndAccessorAreWrittenAndWhatTheLanguageDeclaresIsImplied() {
         assertEquals("int count", written(sourceOf(PlacedRecord.class, RecordComponent.INSTANCE,
                 value -> ((RecordComponentValue) value).name().equals("count"))));
         assertEquals("String... names", written(sourceOf(PlacedRecord.class, RecordComponent.INSTANCE,
@@ -300,14 +302,35 @@ class SourceLocatorTest {
                 any -> true);
         assertEquals("PlacedRecord { names = names.clone(); }", squashed(compact.block()));
         assertEquals(List.of("count", "names"), names(compact.parameters()), "its components, as its parameters");
-        for (final String implied : List.of("count", "names", "equals", "hashCode", "toString")) {
-            assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedRecord.class,
-                    Method.Implementation.INSTANCE, value -> ((MethodValue) value).name().equals(implied)), implied);
+        assertEquals("public String[] names() { return names.clone(); }", written(sourceOf(PlacedRecord.class,
+                Method.Implementation.INSTANCE, value -> ((MethodValue) value).name().equals("names"))),
+                "an accessor written is written");
+        assertEquals("int count", implied(sourceOf(PlacedRecord.class, Method.Implementation.INSTANCE,
+                value -> ((MethodValue) value).name().equals("count"))),
+                "an accessor not written, implied by its component");
+        for (final String method : List.of("equals", "hashCode", "toString")) {
+            assertEquals("record PlacedRecord(int count, String... names)", implied(sourceOf(PlacedRecord.class,
+                    Method.Implementation.INSTANCE, value -> ((MethodValue) value).name().equals(method))),
+                    method + ", implied by the record's header");
         }
-        assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedRecord.class, Field.INSTANCE,
-                field("count")), "the field javac derives from the component");
+        assertEquals("int count", implied(sourceOf(PlacedRecord.class, Field.INSTANCE, field("count"))),
+                "the field its component implies");
         assertInstanceOf(ProcessedSource.Unwritten.class, sourceOf(PlacedRecord.class,
                 ClassProperty.Extensibility.INSTANCE, any -> true), "a record is final without saying so");
+    }
+
+    @Test
+    void aRecordWhoseBodyWritesNothingHasEveryMemberImpliedByItsDeclaration() {
+        final String header = "record BareRecord(String name)";
+        assertEquals(header, implied(sourceOf(BareRecord.class, Constructor.INSTANCE, any -> true)),
+                "its canonical constructor");
+        assertEquals("String name", implied(sourceOf(BareRecord.class, Method.Implementation.INSTANCE,
+                value -> ((MethodValue) value).name().equals("name"))), "its accessor");
+        assertEquals("String name", implied(sourceOf(BareRecord.class, Field.INSTANCE, field("name"))), "its field");
+        for (final String method : List.of("equals", "hashCode", "toString")) {
+            assertEquals(header, implied(sourceOf(BareRecord.class, Method.Implementation.INSTANCE,
+                    value -> ((MethodValue) value).name().equals(method))), method);
+        }
     }
 
     @Test
@@ -345,7 +368,7 @@ class SourceLocatorTest {
     /**
      * Over this module's classes, its tests' and the outline's: each field, method and constructor written in a
      * top-level class, or in a member class of one, is the source of exactly one in its class file, and every other one
-     * in the class file - implied or generated - is written nowhere.
+     * in the class file is implied by what its class writes, or, generated, written nowhere.
      */
     @Test
     void everyMemberWrittenIsTheSourceOfExactlyOneInTheClassFile() {
@@ -401,7 +424,7 @@ class SourceLocatorTest {
                     }
                     case ProcessedSource<?> other when value.object() instanceof MethodValue
                             || value.object() instanceof ConstructorValue || value.object() instanceof FieldValue -> {
-                        if (!(other instanceof ProcessedSource.Unwritten)) {
+                        if (!(other instanceof ProcessedSource.Unwritten || other instanceof ProcessedSource.Implied)) {
                             wrong.add(what + " is " + other);
                         }
                     }
@@ -573,6 +596,11 @@ class SourceLocatorTest {
     /** The block a value is written in, as written. */
     private String written(final ProcessedSource<?> source) {
         return assertInstanceOf(ProcessedSource.Written.class, source).block().text();
+    }
+
+    /** The code a value is implied by, as written. */
+    private String implied(final ProcessedSource<?> source) {
+        return assertInstanceOf(ProcessedSource.Implied.class, source).by().text();
     }
 
     /** The blocks a value is written within, each on a line. */

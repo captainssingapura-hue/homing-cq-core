@@ -140,6 +140,7 @@ public final class SourceView implements Mutable {
                     written.addAll(constructor.initialisers().items());
                 }
                 case ProcessedSource.Written<?> found -> written.add(found.block());
+                case ProcessedSource.Implied<?> implied -> written.add(implied.by());
                 case ProcessedSource.OfInitialisation initialisation -> initialisation.steps().items()
                         .forEach(step -> written.add(step.block()));
                 case ProcessedSource.Within<?> found -> within.addAll(found.blocks().items());
@@ -194,6 +195,7 @@ public final class SourceView implements Mutable {
                         " is declared where highlighted.";
                 case ProcessedSource.Within<?> _ -> " is declared somewhere in the lightly highlighted code, which is"
                         + " not read yet.";
+                case ProcessedSource.Implied<?> _ -> " is implied by the highlighted declaration.";
                 case ProcessedSource.Unwritten<?> _, ProcessedSource.Unplaced<?> _,
                      ProcessedSource.Unavailable<?> _ -> " is not declared in this file.";
             };
@@ -206,9 +208,11 @@ public final class SourceView implements Mutable {
                 final List<String> said = new ArrayList<>();
                 count(sources, one, "written where highlighted", said,
                         source -> source instanceof ProcessedSource.Written<?>);
+                count(sources, one, "implied by the highlighted declaration: the language declares it", said,
+                        source -> source instanceof ProcessedSource.Implied<?>);
                 count(sources, one, "written somewhere in the lightly highlighted code, which is not read yet", said,
                         source -> source instanceof ProcessedSource.Within<?>);
-                count(sources, one, "written nowhere: the compiler implied or generated it", said,
+                count(sources, one, "written nowhere: the compiler generated it", said,
                         source -> source instanceof ProcessedSource.Unwritten<?>);
                 count(sources, one, "not looked for: dependencies are not placed yet", said,
                         source -> source instanceof ProcessedSource.Unplaced<?>);
