@@ -2,7 +2,6 @@ package com.homing_labs.cq.scan;
 
 import com.homing_labs.cq.enforcer.def.Enforcer;
 
-import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Comparator;
 import java.util.List;
@@ -28,24 +27,7 @@ public record PackageRuleset(String rootPackage) implements Ruleset {
                 .filter(type -> Enforcer.class.isAssignableFrom(type) && !type.isInterface()
                         && !Modifier.isAbstract(type.getModifiers()))
                 .sorted(Comparator.comparing(Class::getName))
-                .<Enforcer<?, ?, ?>>map(this::instance)
+                .<Enforcer<?, ?, ?>>map(type -> Instances.INSTANCE.of(type, Enforcer.class))
                 .toList();
-    }
-
-    private Enforcer<?, ?, ?> instance(final Class<?> type) {
-        try {
-            final Field instance = type.getField("INSTANCE");
-            if (Modifier.isStatic(instance.getModifiers()) && type.isAssignableFrom(instance.getType())) {
-                return (Enforcer<?, ?, ?>) instance.get(null);
-            }
-        } catch (final NoSuchFieldException | IllegalAccessException noInstance) {
-            // made with its constructor instead
-        }
-        try {
-            return (Enforcer<?, ?, ?>) type.getConstructor().newInstance();
-        } catch (final ReflectiveOperationException e) {
-            throw new IllegalStateException(type.getName() + " has neither a public static INSTANCE nor a public"
-                    + " constructor that takes nothing", e);
-        }
     }
 }

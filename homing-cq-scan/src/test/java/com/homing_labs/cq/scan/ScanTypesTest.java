@@ -14,7 +14,8 @@ class ScanTypesTest {
         for (final Class<?> type : List.of(ClasspathUnits.class, PackageRuleset.class, RuleChecks.class,
                 Applied.class, AppliedRules.class, ClassRules.class, MemberRules.class, Compliance.class,
                 UnitClasses.class, ClassAttributes.class, Scanner.class, ScanResult.class, ScannedUnits.class,
-                ScannedUnit.class)) {
+                ScannedUnit.class, ComposedDeclaration.class, ReactorSources.class, Instances.class,
+                NamedDeclarations.class, Gate.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());
         }
     }

@@ -9,6 +9,7 @@ import com.homing_labs.cq.lang.java.lexer.JavaLexer;
 import com.homing_labs.cq.lang.java.outline.JavaOutliner;
 import com.homing_labs.cq.lang.java.taxonomy.ObjectKind;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
+import com.homing_labs.cq.scan.Gate;
 import com.homing_labs.cq.scan.ScanResult;
 import com.homing_labs.cq.scan.Scanner;
 import org.junit.jupiter.api.Test;
@@ -19,8 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * The framework's own modules, and this demo's, checked against the demo rules from outside - as a qc module checks
- * the code it depends on, which knows nothing of the check. The scan reads all the main code under the framework's
- * top package that this module has on its classpath; its tests are left out.
+ * the code it depends on, which knows nothing of the check - by the declarations the bench takes too: the demo's code
+ * and the demo's rules. The scan reads all the main code under the framework's top package that this module has on
+ * its classpath; its tests are left out. The code passes the gate: every unit read with its source, and none breaking
+ * a rule.
  */
 class TheFrameworkHoldsToTheDemoRulesTest {
 
@@ -31,26 +34,19 @@ class TheFrameworkHoldsToTheDemoRulesTest {
     private final List<Class<?>> modules = List.of(Principle.class, JavaLang.class, Enforcer.class, JavaUnit.class,
             ObjectKind.class, JavaLexer.class, JavaOutliner.class, Scanner.class, Bench.class, NoStaticMethods.class);
 
-    private final ScanResult result = Scanner.INSTANCE.scan(List.of("com.homing_labs.cq"),
-            List.of(DemoRules.INSTANCE), List.of(), getClass().getClassLoader());
+    private final ScanResult result = Scanner.INSTANCE.scan(DemoCode.INSTANCE.and(DemoRules.INSTANCE),
+            getClass().getClassLoader());
 
     @Test
-    void everyModuleIsReadWithItsSources() {
+    void everyModuleIsRead() {
         final List<String> read = result.units().items().stream().map(scanned -> scanned.unit().type().getName())
                 .toList();
         assertEquals(List.of(), modules.stream().map(Class::getName).filter(name -> !read.contains(name)).toList(),
                 "a module the scan did not read");
-        assertEquals(List.of(), result.units().items().stream().filter(scanned -> scanned.unit().source().isEmpty())
-                .map(scanned -> scanned.unit().type().getName()).toList(),
-                "a source rule checks nothing of a unit without its source");
     }
 
     @Test
-    void everyModuleConforms() {
-        assertEquals(List.of(), result.units().items().stream()
-                .flatMap(scanned -> scanned.applied().items().stream().filter(applied -> !applied.complies())
-                        .map(applied -> scanned.unit().type().getName() + " " + applied.signature().rule()
-                                .getSimpleName() + ": " + applied.lines()))
-                .toList());
+    void theFrameworkPassesTheGate() {
+        assertEquals(List.of(), Gate.INSTANCE.failures(result));
     }
 }
