@@ -29,7 +29,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.11.3</junit.version>
         <jacoco.version>0.8.14</jacoco.version>
-        <jontology.version>LOCAL-SNAPSHOT</jontology.version>
+        <jontology.version>0.1.0</jontology.version>
     </properties>
 
 
