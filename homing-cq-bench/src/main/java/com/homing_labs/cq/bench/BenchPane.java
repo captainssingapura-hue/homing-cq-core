@@ -19,11 +19,13 @@ import javafx.scene.control.ToolBar;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.layout.BorderPane;
+import javafx.stage.Window;
 
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -32,8 +34,8 @@ import java.util.stream.Collectors;
  * over the index of the selected unit's nest; a tab for each view in the middle; the source on the right, always in
  * view; and what the scan found at the bottom. Selecting a unit opens its nest and measures all of it; selecting a
  * class in the nest measures that class alone. The source highlights the class selected, or what a view has selected
- * of it. The tool bar also opens the taxonomy itself, in a window of its own. The {@link Scanner} scans; the bench
- * shows what it found.
+ * of it. The tool bar also opens the taxonomy itself and the {@link RuleBookView rule book}, each in a window of its
+ * own; the rule book follows each scan. The {@link Scanner} scans; the bench shows what it found.
  */
 public record BenchPane() implements StatelessFunctionalObject {
 
@@ -67,8 +69,13 @@ public record BenchPane() implements StatelessFunctionalObject {
         rules.setId("rulesets");
         final Label status = title("");
         status.setId("status");
+        final RuleBookView book = new RuleBookView(rulesets, sources, loader);
+        final Consumer<ScanResult> scanned = result -> {
+            views.forEach(view -> view.scanned(result));
+            book.scanned(result);
+        };
         final Runnable scan = () -> {
-            scan(roots.getText(), rulesets, sources, loader, units, views, status);
+            scan(roots.getText(), rulesets, sources, loader, units, scanned, status);
             nest.setRoot(null);
             views.forEach(view -> view.show(Optional.empty()));
             source.show(Optional.empty());
@@ -77,9 +84,6 @@ public record BenchPane() implements StatelessFunctionalObject {
         button.setOnAction(event -> scan.run());
         roots.setOnAction(event -> scan.run());
         scan.run();
-        final Button taxonomy = new Button("Taxonomy");
-        taxonomy.setId("taxonomy-window");
-        taxonomy.setOnAction(event -> TaxonomyView.INSTANCE.show(taxonomy.getScene().getWindow()));
         final SplitPane indexes = new SplitPane(new BorderPane(units, title("Units"), null, null, null),
                 new BorderPane(nest, nestTitle, null, null, null));
         indexes.setOrientation(Orientation.VERTICAL);
@@ -87,21 +91,22 @@ public record BenchPane() implements StatelessFunctionalObject {
         final SplitPane split = new SplitPane(indexes, tabs(views, source), source.content());
         split.setDividerPositions(0.18, 0.56);
         return new BorderPane(split, new ToolBar(new Label("Root packages"), roots, new Label("Rulesets"), rules,
-                button, taxonomy), null, status, null);
+                button, opener("Taxonomy", "taxonomy-window", TaxonomyView.INSTANCE::show),
+                opener("Rule book", "rule-book-window", book::show)), null, status, null);
     }
 
     /**
      * Scans the root packages by the rulesets, and shows what it found in the tree; or, if it cannot, says why and
-     * shows none.
+     * shows none. Whatever it comes to is handed on to the listener.
      */
     private void scan(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
-                      final ClassLoader loader, final TreeView<IndexEntry> units, final List<BenchView> views,
-                      final Label status) {
+                      final ClassLoader loader, final TreeView<IndexEntry> units,
+                      final Consumer<ScanResult> listener, final Label status) {
         final List<String> roots = Arrays.stream(rootPackages.split("[,\\s]+")).filter(root -> !root.isEmpty())
                 .distinct().toList();
         try {
             final ScanResult result = Scanner.INSTANCE.scan(roots, rulesets, sources, loader);
-            views.forEach(view -> view.scanned(result));
+            listener.accept(result);
             final List<ScannedUnit> found = result.units().items();
             units.setRoot(UnitTree.INSTANCE.of(found));
             status.setText(count(found.size(), "unit") + " in "
@@ -110,7 +115,7 @@ public record BenchPane() implements StatelessFunctionalObject {
                     + result.compliance().compliant() + " comply with the " + count(result.rules(), "rule") + " of "
                     + names(rulesets));
         } catch (final RuntimeException e) {
-            views.forEach(view -> view.scanned(new ScanResult(new ScannedUnits(List.of()), 0)));
+            listener.accept(new ScanResult(new ScannedUnits(List.of()), 0));
             units.setRoot(null);
             status.setText("Cannot scan " + String.join(", ", roots) + " by " + names(rulesets) + ": "
                     + e.getMessage());
@@ -134,6 +139,14 @@ public record BenchPane() implements StatelessFunctionalObject {
             view.onFocus(source::focus);
         });
         return tabs;
+    }
+
+    /** A button of the tool bar that opens a window of its own over the bench's. */
+    private Button opener(final String text, final String id, final Consumer<Window> open) {
+        final Button button = new Button(text);
+        button.setId(id);
+        button.setOnAction(event -> open.accept(button.getScene().getWindow()));
+        return button;
     }
 
     private TreeView<IndexEntry> tree(final String id) {

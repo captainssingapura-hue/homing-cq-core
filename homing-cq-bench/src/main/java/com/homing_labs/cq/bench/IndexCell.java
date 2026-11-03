@@ -3,7 +3,6 @@ package com.homing_labs.cq.bench;
 import hue.captains.singapura.tao.ontology.Mutable;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
-import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.layout.HBox;
 
@@ -26,9 +25,9 @@ public final class IndexCell extends TreeCell<IndexEntry> implements Mutable {
         }
         final HBox row = new HBox(4);
         row.setAlignment(Pos.CENTER_LEFT);
-        before(entry).forEach(badge -> row.getChildren().add(label(badge)));
+        before(entry).forEach(badge -> row.getChildren().add(Badges.INSTANCE.label(badge)));
         row.getChildren().add(new Label(entry.toString()));
-        after(entry).ifPresent(badge -> row.getChildren().add(label(badge)));
+        after(entry).ifPresent(badge -> row.getChildren().add(Badges.INSTANCE.label(badge)));
         setGraphic(row);
     }
 
@@ -41,17 +40,5 @@ public final class IndexCell extends TreeCell<IndexEntry> implements Mutable {
             case IndexEntry.Package inPackage -> Optional.of(Badges.INSTANCE.ofUnits(inPackage.compliance()));
             case IndexEntry.OfClass ofClass -> ofClass.compliance().map(Badges.INSTANCE::ofUnit);
         };
-    }
-
-    private Label label(final Badge badge) {
-        final Label label = new Label(badge.text());
-        label.setMinWidth(16);
-        label.setAlignment(Pos.CENTER);
-        label.setTooltip(new Tooltip(badge.meaning()));
-        label.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 0 4 0 4; "
-                + "-fx-background-radius: 3; -fx-border-radius: 3; "
-                + (badge.filled() ? "-fx-background-color: " + badge.colour() + "; -fx-text-fill: " + badge.ink() + ";"
-                : "-fx-border-color: " + badge.colour() + "; -fx-text-fill: " + badge.colour() + ";"));
-        return label;
     }
 }

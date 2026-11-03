@@ -29,15 +29,24 @@ public record Applied(EnforcerSignature signature, Optional<Result<?, ?>> result
         return result.map(given -> given.hasFindings() ? String.valueOf(findingCount()) : "none").orElse("failed");
     }
 
+    /** Its findings, each shown without the packages of the classes it names: none, when it failed. */
+    public List<String> findings() {
+        return result.map(given -> given.findings().items().stream().map(Object::toString).sorted()
+                .map(this::unqualified).toList()).orElse(List.of());
+    }
+
     /**
      * Its findings, each shown without the packages of the classes it names, then its notices; or why it failed.
      */
     public List<String> lines() {
-        return result.map(given -> Stream.concat(
-                        given.findings().items().stream().map(Object::toString).sorted(),
-                        given.notices().items().stream().map(notice -> "notice: " + notice).sorted())
-                        .map(line -> line.replaceAll("(?:class )?(?:[a-z_][a-z0-9_]*\\.)+", ""))
+        return result.map(given -> Stream.concat(findings().stream(),
+                        given.notices().items().stream().map(notice -> "notice: " + notice).sorted()
+                                .map(this::unqualified))
                         .toList())
                 .orElseGet(() -> failure.stream().toList());
+    }
+
+    private String unqualified(final String line) {
+        return line.replaceAll("(?:class )?(?:[a-z_][a-z0-9_]*\\.)+", "");
     }
 }

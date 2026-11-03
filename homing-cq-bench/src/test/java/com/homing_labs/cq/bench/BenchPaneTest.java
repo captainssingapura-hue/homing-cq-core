@@ -621,7 +621,8 @@ class BenchPaneTest {
                 Focus.OfClass.class, Focus.OfValues.class, Focus.OfInitialisation.class, RulesView.class,
                 IndexCell.class, ValueText.class, TaxonomyView.class,
                 Badge.class, Badges.class, Existence.TopLevel.class, Existence.StaticMember.class,
-                Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class,
+                Existence.InnerMember.class, Existence.Local.class, Existence.Anonymous.class, RuleBookView.class,
+                RuleBookView.Entry.class, RuleBookView.Violation.class, ClassDocs.class, DocText.class,
                 BenchPane.class, Bench.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());
         }

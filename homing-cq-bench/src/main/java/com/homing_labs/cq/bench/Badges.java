@@ -3,6 +3,9 @@ package com.homing_labs.cq.bench;
 import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.scan.Compliance;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
+import javafx.geometry.Pos;
+import javafx.scene.control.Label;
+import javafx.scene.control.Tooltip;
 import javafx.scene.paint.Color;
 
 import java.util.ArrayList;
@@ -13,7 +16,8 @@ import java.util.Locale;
  * The badges of the bench's indexes. A class has one for its kind, as the taxonomy has it, and, when nested in a unit,
  * one for how it exists there; a unit needs no second badge, as every unit is a top-level class. In the tree of
  * units, a package has one for how many of its units comply, and a unit one for whether it does: lively green when
- * all do; from yellow to red as the share that does falls to 70%; and below that, alarm red.
+ * all do; from yellow to red as the share that does falls to 70%; and below that, alarm red. In the rule book, a rule
+ * has one for how many of the units it checks comply with it, coloured alike.
  */
 public record Badges() implements StatelessFunctionalObject {
 
@@ -67,6 +71,30 @@ public record Badges() implements StatelessFunctionalObject {
                 + " of the rules applied to it", colour(compliance), true)
                 : new Badge("!", "a rule applied to it failed, so it cannot be said to comply", colour(compliance),
                 true);
+    }
+
+    /**
+     * The badge of a rule in the rule book: how many of the units it checks comply with it, out of how many; grey, when
+     * it checks none.
+     */
+    public Badge ofRule(final Compliance compliance) {
+        return compliance.total() == 0
+                ? new Badge("0/0", "it checks none of the units scanned", NEUTRAL, true)
+                : new Badge(compliance.compliant() + "/" + compliance.total(), compliance.compliant() + " of "
+                + count(compliance.total(), "unit") + " it checks comply with it", colour(compliance), true);
+    }
+
+    /** A badge as it is shown: its text in a small label, filled or outlined in its colour, its meaning on hovering. */
+    public Label label(final Badge badge) {
+        final Label label = new Label(badge.text());
+        label.setMinWidth(16);
+        label.setAlignment(Pos.CENTER);
+        label.setTooltip(new Tooltip(badge.meaning()));
+        label.setStyle("-fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 0 4 0 4; "
+                + "-fx-background-radius: 3; -fx-border-radius: 3; "
+                + (badge.filled() ? "-fx-background-color: " + badge.colour() + "; -fx-text-fill: " + badge.ink() + ";"
+                : "-fx-border-color: " + badge.colour() + "; -fx-text-fill: " + badge.colour() + ";"));
+        return label;
     }
 
     /** The colour of a share of units complying. */
