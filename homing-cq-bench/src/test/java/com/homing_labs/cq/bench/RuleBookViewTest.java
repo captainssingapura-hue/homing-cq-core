@@ -143,6 +143,13 @@ class RuleBookViewTest {
     }
 
     @Test
+    void aClassFromAJarInARepositoryIsExplainedFromTheSourcesPackedOnTheClassPath() {
+        assertEquals(Optional.of("What a jar of rules packs: this stands for the source of a class from a jar in a "
+                        + "repository, which has no source directory, for the rule book's tests."),
+                ClassDocs.INSTANCE.of(org.junit.jupiter.api.Test.class, List.of()));
+    }
+
+    @Test
     void theRuleSelectedStaysSelectedWhenTheBenchScansAgain() {
         final RuleBookView book = FxThread.INSTANCE.call(() -> book(rules));
         final List<String> before = FxThread.INSTANCE.call(() -> {

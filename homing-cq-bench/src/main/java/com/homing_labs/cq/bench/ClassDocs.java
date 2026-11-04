@@ -12,7 +12,9 @@ import com.homing_labs.cq.lang.java.outline.TypeHeader;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,12 +24,17 @@ import java.util.stream.Stream;
 /**
  * The documentation comment of a class, as plain text, from the source that declares it: a top-level class, or a
  * member class declared in one. The source is the file named after the top-level class, looked for in the directories
- * given, then in those beside the class's code base, as Maven lays a module out. A class whose source is not at hand,
- * declared deeper, or written without a documentation comment, has none.
+ * given, then in those beside the class's code base, as Maven lays a module out, and last on the class path under
+ * {@code META-INF/homing-cq/sources}, where a jar of rules can pack its sources so a project that takes it from a
+ * repository still has them explained. A class whose source is not at hand, declared deeper, or written without a
+ * documentation comment, has none.
  */
 public record ClassDocs() implements StatelessFunctionalObject {
 
     public static final ClassDocs INSTANCE = new ClassDocs();
+
+    /** Where a jar packs its sources, by package. */
+    private static final String PACKED_SOURCES = "/META-INF/homing-cq/sources/";
 
     /** The class's documentation comment, as {@link DocText} has it, its source looked for in {@code sources} first. */
     public Optional<String> of(final Class<?> type, final List<Path> sources) {
@@ -48,14 +55,25 @@ public record ClassDocs() implements StatelessFunctionalObject {
         return top;
     }
 
-    /** The text of the file that declares the top-level class, from the first directory that has it. */
+    /** The text of the file that declares the top-level class: the first directory's that has it, or else packed. */
     private Optional<String> source(final Class<?> top, final List<Path> sources) {
         final Path file = Path.of(top.getPackageName().replace('.', '/'), top.getSimpleName() + ".java");
         return Stream.concat(sources.stream(), beside(top).stream())
                 .map(directory -> directory.resolve(file))
                 .filter(Files::isRegularFile)
                 .findFirst()
-                .map(this::text);
+                .map(this::text)
+                .or(() -> packed(top));
+    }
+
+    /** The text of the file packed on the class path, if it is. */
+    private Optional<String> packed(final Class<?> top) {
+        final String file = PACKED_SOURCES + top.getName().replace('.', '/') + ".java";
+        try (InputStream in = top.getResourceAsStream(file)) {
+            return in == null ? Optional.empty() : Optional.of(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        } catch (final IOException e) {
+            throw new UncheckedIOException("Cannot read " + file, e);
+        }
     }
 
     /** The source directories beside the class's code base: none for a class of the JDK, which has none. */

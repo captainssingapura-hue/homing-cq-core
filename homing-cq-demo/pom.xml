@@ -9,10 +9,16 @@
         <version>VOID-SNAPSHOT</version>
     </parent>
 
-    <!-- A demo of what a shop builds on the framework: concrete principles, their Java rules, and the enforcers. -->
+    <!-- A demo of what a project does with the framework: it declares its code, opts in to the basic rules, and
+         checks the one by the other, here on the framework's own code. -->
     <artifactId>homing-cq-demo</artifactId>
 
     <dependencies>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-rules-basic</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
         <dependency>
             <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
             <artifactId>homing-cq-enforcer-model</artifactId>
@@ -42,7 +48,7 @@
             <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
             <artifactId>core</artifactId>
         </dependency>
-        <!-- the bench, which shows what DemoCode and DemoRules declare -->
+        <!-- the bench, which shows what DemoCode and BasicRules declare -->
         <dependency>
             <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
             <artifactId>homing-cq-bench</artifactId>
@@ -68,7 +74,7 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>com.homing_labs.cq.bench.Bench</mainClass>
-                    <commandlineArgs>com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.demo.DemoRules</commandlineArgs>
+                    <commandlineArgs>com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules</commandlineArgs>
                 </configuration>
             </plugin>
         </plugins>
