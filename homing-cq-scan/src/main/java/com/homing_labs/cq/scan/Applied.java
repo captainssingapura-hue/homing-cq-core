@@ -4,6 +4,7 @@ import com.homing_labs.cq.enforcer.def.EnforcerSignature;
 import com.homing_labs.cq.enforcer.def.Result;
 import hue.captains.singapura.tao.ontology.Scalar;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -31,8 +32,9 @@ public record Applied(EnforcerSignature signature, Optional<Result<?, ?>> result
 
     /** Its findings, each shown without the packages of the classes it names: none, when it failed. */
     public List<String> findings() {
-        return result.map(given -> given.findings().items().stream().map(Object::toString).sorted()
-                .map(this::unqualified).toList()).orElse(List.of());
+        return result.map(given -> given.findings().items().stream()
+                .sorted(Comparator.comparing(String::valueOf)).<String>map(ResultText.INSTANCE::of).toList())
+                .orElse(List.of());
     }
 
     /**
@@ -40,13 +42,9 @@ public record Applied(EnforcerSignature signature, Optional<Result<?, ?>> result
      */
     public List<String> lines() {
         return result.map(given -> Stream.concat(findings().stream(),
-                        given.notices().items().stream().map(notice -> "notice: " + notice).sorted()
-                                .map(this::unqualified))
+                        given.notices().items().stream().sorted(Comparator.comparing(String::valueOf))
+                                .map(notice -> "notice: " + ResultText.INSTANCE.of(notice)))
                         .toList())
                 .orElseGet(() -> failure.stream().toList());
-    }
-
-    private String unqualified(final String line) {
-        return line.replaceAll("(?:class )?(?:[a-z_][a-z0-9_]*\\.)+", "");
     }
 }

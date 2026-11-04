@@ -77,6 +77,16 @@
                     <commandlineArgs>com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules</commandlineArgs>
                 </configuration>
             </plugin>
+            <!-- mvn exec:java writes the report over the same declarations; run alone, it fails nothing -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <mainClass>com.homing_labs.cq.scan.Report</mainClass>
+                    <commandlineArgs>--out ${project.build.directory}/cq-report com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules</commandlineArgs>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

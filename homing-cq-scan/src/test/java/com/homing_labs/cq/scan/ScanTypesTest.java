@@ -15,7 +15,8 @@ class ScanTypesTest {
                 Applied.class, AppliedRules.class, ClassRules.class, MemberRules.class, Compliance.class,
                 UnitClasses.class, ClassAttributes.class, Scanner.class, ScanResult.class, ScannedUnits.class,
                 ScannedUnit.class, ComposedDeclaration.class, ReactorSources.class, Instances.class,
-                NamedDeclarations.class, Gate.class)) {
+                NamedDeclarations.class, Gate.class, Report.class, ReportRow.class, ReportRows.class,
+                ReportTable.class, ReportSummary.class, ReportCommandLine.class, ResultText.class)) {
             assertEquals(List.of(), new OntologyEnforcer().enforce(type), type.getName());
         }
     }

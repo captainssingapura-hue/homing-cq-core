@@ -22,10 +22,22 @@ public record Gate() implements StatelessFunctionalObject {
 
     /** What keeps the code a scan read from passing, one line each: none, when it passes. */
     public List<String> failures(final ScanResult result) {
-        final Stream<String> empty = Stream.concat(
+        return Stream.concat(nothingChecked(result).stream(), result.units().items().stream().flatMap(this::failures))
+                .toList();
+    }
+
+    /** Why a scan checked nothing, one line each: none, when it read units and had rules to check them by. */
+    public List<String> nothingChecked(final ScanResult result) {
+        return Stream.concat(
                 result.units().items().isEmpty() ? Stream.of("no unit read: nothing was checked") : Stream.empty(),
-                result.rules() == 0 ? Stream.of("no rule to check by: nothing was checked") : Stream.empty());
-        return Stream.concat(empty, result.units().items().stream().flatMap(this::failures)).toList();
+                result.rules() == 0 ? Stream.of("no rule to check by: nothing was checked") : Stream.empty()).toList();
+    }
+
+    /** How a scan came out, in one line: the units, the rules, and how many failures, or that it passed. */
+    public String closing(final ScanResult result) {
+        final int failures = failures(result).size();
+        return result.units().items().size() + " units by " + result.rules() + " rules: "
+                + (failures == 0 ? "passed" : failures + " failures");
     }
 
     /**
@@ -37,11 +49,10 @@ public record Gate() implements StatelessFunctionalObject {
         final ScanResult result = Scanner.INSTANCE.scan(NamedDeclarations.INSTANCE.of(List.of(args), loader), loader);
         final List<String> failures = failures(result);
         failures.forEach(System.out::println);
-        final String scanned = result.units().items().size() + " units by " + result.rules() + " rules";
         if (!failures.isEmpty()) {
-            throw new IllegalStateException(scanned + ": " + failures.size() + " failures");
+            throw new IllegalStateException(closing(result));
         }
-        System.out.println(scanned + ": passed");
+        System.out.println(closing(result));
     }
 
     private Stream<String> failures(final ScannedUnit scanned) {
