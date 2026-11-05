@@ -17,7 +17,8 @@ import java.util.stream.Collectors;
 /**
  * Checks {@link NoStaticMethods} on a Java unit: every static method declared in its top-level class or in a class
  * nested in it. What the compiler makes is not counted - lambda bodies and other synthetic methods, bridges, and an
- * enum's {@code values()} and {@code valueOf(String)}.
+ * enum's {@code values()} and {@code valueOf(String)}. Nor is {@code public static void main(String[])}, the one static
+ * method the JVM asks for before Java 25, whose code cannot start any other way. Any other {@code main} is counted.
  *
  * <p>A class rule: the loaded class is enough, so a unit with or without its source will do.</p>
  */
@@ -32,8 +33,15 @@ public record NoStaticMethodsEnforcer()
                 .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                 .filter(method -> Modifier.isStatic(method.getModifiers()))
                 .filter(method -> !method.isSynthetic() && !method.isBridge() && !isEnumsOwn(method))
+                .filter(method -> !isProgramsStart(method))
                 .map(method -> new StaticMethod(new JavaMethod(method)))
                 .collect(Collectors.toSet())));
+    }
+
+    private boolean isProgramsStart(final Method method) {
+        return method.getName().equals("main") && Modifier.isPublic(method.getModifiers())
+                && method.getReturnType() == void.class
+                && Arrays.equals(method.getParameterTypes(), new Class<?>[]{String[].class});
     }
 
     private boolean isEnumsOwn(final Method method) {

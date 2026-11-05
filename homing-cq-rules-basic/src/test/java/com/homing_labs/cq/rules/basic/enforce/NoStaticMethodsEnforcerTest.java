@@ -5,6 +5,8 @@ import com.homing_labs.cq.rules.basic.rule.NoStaticMethods;
 import com.homing_labs.cq.rules.basic.samples.Clean;
 import com.homing_labs.cq.rules.basic.samples.GlobalCounter;
 import com.homing_labs.cq.rules.basic.samples.Greeting;
+import com.homing_labs.cq.rules.basic.samples.Launcher;
+import com.homing_labs.cq.rules.basic.samples.NotQuiteLaunchers;
 import com.homing_labs.cq.rules.basic.samples.StaticHelper;
 import com.homing_labs.cq.enforcer.def.Findings;
 import com.homing_labs.cq.enforcer.def.Result;
@@ -37,6 +39,22 @@ class NoStaticMethodsEnforcerTest {
     @Test
     void doesNotCountWhatTheCompilerMakes() {
         assertEquals(found(), check(Clean.class));
+    }
+
+    @Test
+    void letsThroughTheMainAProgramStartsFromWhereverItIsDeclared() {
+        assertEquals(found(), check(Launcher.class));
+    }
+
+    @Test
+    void findsAnyOtherMainAndAnyOtherStaticMethodBesideTheOneItLetsThrough() {
+        assertEquals(found(
+                        new StaticMethod(new JavaMethod(NotQuiteLaunchers.NotPublic.class, "main", String[].class)),
+                        new StaticMethod(new JavaMethod(NotQuiteLaunchers.NotVoid.class, "main", String[].class)),
+                        new StaticMethod(new JavaMethod(NotQuiteLaunchers.NoArguments.class, "main")),
+                        new StaticMethod(new JavaMethod(NotQuiteLaunchers.NotStrings.class, "main", int[].class)),
+                        new StaticMethod(new JavaMethod(NotQuiteLaunchers.Beside.class, "helper"))),
+                check(NotQuiteLaunchers.class));
     }
 
     @Test
