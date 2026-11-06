@@ -34,6 +34,7 @@ public record Bench() implements StatelessFunctionalObject {
     }
 
     private void show(final Declaration declaration, final Stage stage) {
+        BenchIcon.INSTANCE.onEveryWindow();
         stage.setTitle("CQ Bench");
         stage.setScene(new Scene(BenchPane.INSTANCE.content(String.join(", ", declaration.packages()),
                 declaration.rulesets(), declaration.sources(), getClass().getClassLoader(),
