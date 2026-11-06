@@ -1,9 +1,6 @@
 package com.homing_labs.cq.bench;
 
 import com.homing_labs.cq.scan.Ruleset;
-import com.homing_labs.cq.scan.ScanResult;
-import com.homing_labs.cq.scan.ScannedUnit;
-import com.homing_labs.cq.scan.ScannedUnits;
 import com.homing_labs.cq.scan.Scanner;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
 import javafx.geometry.Insets;
@@ -22,11 +19,9 @@ import javafx.scene.layout.BorderPane;
 import javafx.stage.Window;
 
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 /**
  * The bench, as an IDE lays it out: the root packages to scan and the rulesets to check them by at the top; on the
@@ -44,10 +39,18 @@ public record BenchPane() implements StatelessFunctionalObject {
     /**
      * The bench over the units under {@code rootPackages} - one package, or several apart by commas or spaces - as
      * {@code loader} finds them in main code, with their sources from {@code sources} first, checked by the rulesets,
-     * with these views.
+     * with these views, and scanned by the time it returns.
      */
     public Parent content(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
                           final ClassLoader loader, final List<BenchView> views, final SourceView source) {
+        return content(rootPackages, rulesets, sources, loader, views, source, ScanThread.AtOnce.INSTANCE,
+                new BenchMeter());
+    }
+
+    /** The bench as above, its scans run by {@code thread}, each one measured on {@code meter}. */
+    public Parent content(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
+                          final ClassLoader loader, final List<BenchView> views, final SourceView source,
+                          final ScanThread thread, final BenchMeter meter) {
         final TreeView<IndexEntry> units = tree("units");
         units.setShowRoot(false);
         final TreeView<IndexEntry> nest = tree("nest");
@@ -65,25 +68,25 @@ public record BenchPane() implements StatelessFunctionalObject {
             source.show(selection(selected));
         });
         final TextField roots = field("roots", rootPackages, 30);
-        final Label rules = new Label(names(rulesets));
-        rules.setId("rulesets");
         final Label status = title("");
         status.setId("status");
         final RuleBookView book = new RuleBookView(rulesets, sources, loader);
-        final Consumer<ScanResult> scanned = result -> {
-            views.forEach(view -> view.scanned(result));
-            book.scanned(result);
-        };
-        final Runnable scan = () -> {
-            scan(roots.getText(), rulesets, sources, loader, units, scanned, status);
-            nest.setRoot(null);
-            views.forEach(view -> view.show(Optional.empty()));
-            source.show(Optional.empty());
-        };
         final Button button = new Button("Scan");
-        button.setOnAction(event -> scan.run());
-        roots.setOnAction(event -> scan.run());
-        scan.run();
+        button.setId("scan");
+        final BenchScan scan = new BenchScan(rulesets, sources, loader, thread, meter, units, status, button,
+                result -> {
+                    views.forEach(view -> view.scanned(result));
+                    book.scanned(result);
+                }, () -> {
+                    nest.setRoot(null);
+                    views.forEach(view -> view.show(Optional.empty()));
+                    source.show(Optional.empty());
+                });
+        final Label rules = new Label(scan.names());
+        rules.setId("rulesets");
+        button.setOnAction(event -> scan.run(roots.getText()));
+        roots.setOnAction(event -> scan.run(roots.getText()));
+        scan.run(roots.getText());
         final SplitPane indexes = new SplitPane(new BorderPane(units, title("Units"), null, null, null),
                 new BorderPane(nest, nestTitle, null, null, null));
         indexes.setOrientation(Orientation.VERTICAL);
@@ -93,39 +96,6 @@ public record BenchPane() implements StatelessFunctionalObject {
         return new BorderPane(split, new ToolBar(new Label("Root packages"), roots, new Label("Rulesets"), rules,
                 button, opener("Taxonomy", "taxonomy-window", TaxonomyView.INSTANCE::show),
                 opener("Rule book", "rule-book-window", book::show)), null, status, null);
-    }
-
-    /**
-     * Scans the root packages by the rulesets, and shows what it found in the tree; or, if it cannot, says why and
-     * shows none. Whatever it comes to is handed on to the listener.
-     */
-    private void scan(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
-                      final ClassLoader loader, final TreeView<IndexEntry> units,
-                      final Consumer<ScanResult> listener, final Label status) {
-        final List<String> roots = Arrays.stream(rootPackages.split("[,\\s]+")).filter(root -> !root.isEmpty())
-                .distinct().toList();
-        try {
-            final ScanResult result = Scanner.INSTANCE.scan(roots, rulesets, sources, loader);
-            listener.accept(result);
-            final List<ScannedUnit> found = result.units().items();
-            units.setRoot(UnitTree.INSTANCE.of(found));
-            status.setText(count(found.size(), "unit") + " in "
-                    + count((int) found.stream().map(scanned -> scanned.unit().type().getPackageName()).distinct()
-                    .count(), "package") + " under " + String.join(", ", roots) + "; "
-                    + result.compliance().compliant() + " comply with the " + count(result.rules(), "rule") + " of "
-                    + names(rulesets));
-        } catch (final RuntimeException e) {
-            listener.accept(new ScanResult(new ScannedUnits(List.of()), 0));
-            units.setRoot(null);
-            status.setText("Cannot scan " + String.join(", ", roots) + " by " + names(rulesets) + ": "
-                    + e.getMessage());
-        }
-    }
-
-    /** The rulesets by their names: {@code no ruleset}, when there is none. */
-    private String names(final List<Ruleset> rulesets) {
-        return rulesets.isEmpty() ? "no ruleset" : rulesets.stream().map(Ruleset::name)
-                .collect(Collectors.joining(", "));
     }
 
     /** A tab for each view, each telling the source what it has selected. */
@@ -174,8 +144,5 @@ public record BenchPane() implements StatelessFunctionalObject {
                 .flatMap(entry -> entry instanceof IndexEntry.OfClass ofClass
                         ? Optional.of(ofClass.selection()) : Optional.empty());
     }
-
-    private String count(final int count, final String thing) {
-        return count + " " + thing + (count == 1 ? "" : "s");
-    }
 }
+
