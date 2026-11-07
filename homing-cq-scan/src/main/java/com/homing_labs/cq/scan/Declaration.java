@@ -7,9 +7,10 @@ import java.util.List;
 
 /**
  * What a check covers, as the code that checks declares it: the root packages to scan, the rulesets to check them by,
- * and the directories to look for their sources in first. A declaration may declare any of the three alone - a pack
- * of rules its rulesets, a module its packages, {@link ReactorSources} its sources - and declarations compose,
- * {@link #and}, into the one a check is given. The bench and a build's {@link Gate} take the same declaration.
+ * the directories to look for their sources in first, and the classes let off a rule. A declaration may declare any of
+ * these alone - a pack of rules its rulesets, a module its packages, {@link ReactorSources} its sources - and
+ * declarations compose, {@link #and}, into the one a check is given. The bench and a build's {@link Gate} take the same
+ * declaration.
  */
 public interface Declaration extends FunctionalObject {
 
@@ -32,8 +33,16 @@ public interface Declaration extends FunctionalObject {
     }
 
     /**
-     * This declaration and {@code other} as one: the packages and the rulesets of both, each once, this one's first;
-     * and the source directories of both, in order, so this one's are looked in first.
+     * What classes are let off, one stateless object for each class: none, unless declared. Each exemption must let
+     * something off, or it fails the gate.
+     */
+    default List<Exemptions<?>> exemptions() {
+        return List.of();
+    }
+
+    /**
+     * This declaration and {@code other} as one: the packages, the rulesets and the exemptions of both, each once, this
+     * one's first; and the source directories of both, in order, so this one's are looked in first.
      */
     default Declaration and(final Declaration other) {
         return new ComposedDeclaration(this, other);

@@ -25,6 +25,11 @@ record ComposedDeclaration(Declaration first, Declaration second) implements Dec
         return united(first.sources(), second.sources());
     }
 
+    @Override
+    public List<Exemptions<?>> exemptions() {
+        return united(first.exemptions(), second.exemptions());
+    }
+
     private <T> List<T> united(final List<T> firsts, final List<T> seconds) {
         return Stream.concat(firsts.stream(), seconds.stream()).distinct().toList();
     }

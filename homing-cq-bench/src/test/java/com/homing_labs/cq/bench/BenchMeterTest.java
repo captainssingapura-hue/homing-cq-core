@@ -4,12 +4,17 @@ import com.homing_labs.cq.core.def.Rule;
 import com.homing_labs.cq.core.def.lang.JavaLang;
 import com.homing_labs.cq.enforcer.def.Enforcer;
 import com.homing_labs.cq.enforcer.def.Result;
+import com.homing_labs.cq.lang.java.taxonomy.Taxonomy;
 import com.homing_labs.cq.lang.java.unit.JavaUnit;
+import com.homing_labs.cq.scan.Exemption;
+import com.homing_labs.cq.scan.Exemptions;
 import com.homing_labs.cq.scan.PackageRuleset;
 import com.homing_labs.cq.scan.Ruleset;
 import com.homing_labs.cq.scan.ScanResult;
 import com.homing_labs.cq.scan.Scanner;
+import com.homing_labs.cq.scan.rules.EveryUnitIsSeen;
 import com.homing_labs.cq.scan.rules.Neatness;
+import com.homing_labs.cq.scan.rules.SeenOnPurpose;
 import hue.captains.singapura.tao.ontology.enforcer.OntologyEnforcer;
 import javafx.application.Platform;
 import javafx.scene.Group;
@@ -27,6 +32,7 @@ import org.junit.jupiter.api.TestInstance;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -155,6 +161,15 @@ class BenchMeterTest {
     }
 
     @Test
+    void anExemptionMovesNoDialAndTheBenchSaysHowTheExemptionsStand() {
+        final Stage bench = FxThread.INSTANCE.call(() -> bench(ScanThread.AtOnce.INSTANCE, seen,
+                List.of(new TaxonomyExemptions(), new ScannerExemptions())));
+        assertEquals(NONE_COMPLY, FxThread.INSTANCE.call(() -> dial(bench)));
+        assertTrue(FxThread.INSTANCE.call(() -> status(bench)).endsWith("; 1 exemption used, 1 stale"),
+                FxThread.INSTANCE.call(() -> status(bench)));
+    }
+
+    @Test
     void aClassThatCannotBeLinkedEndsTheScanSayingSoAndLeavesNoReading() {
         final Stage bench = FxThread.INSTANCE.call(() -> bench(ScanThread.AtOnce.INSTANCE, List.of(new Unlinkable())));
         assertEquals(MEASURING, FxThread.INSTANCE.call(() -> dial(bench)));
@@ -192,9 +207,13 @@ class BenchMeterTest {
     }
 
     private Stage bench(final ScanThread thread, final List<Ruleset> rulesets) {
+        return bench(thread, rulesets, List.of());
+    }
+
+    private Stage bench(final ScanThread thread, final List<Ruleset> rulesets, final List<Exemptions<?>> exemptions) {
         final Stage stage = new Stage();
         stage.setScene(new Scene(BenchPane.INSTANCE.content(TAXONOMY, rulesets, List.of(), loader, List.of(),
-                new SourceView(), thread, meter), 900, 600));
+                new SourceView(), exemptions, thread, meter), 900, 600));
         stage.show();
         shown.add(stage);
         return stage;
@@ -216,6 +235,24 @@ class BenchMeterTest {
     @SuppressWarnings("unchecked")
     private TreeView<IndexEntry> units(final Stage bench) {
         return (TreeView<IndexEntry>) bench.getScene().getRoot().lookup("#units");
+    }
+
+    /** A class among those scanned, let off a rule that finds something on it. */
+    private record TaxonomyExemptions() implements Exemptions<Taxonomy> {
+
+        @Override
+        public Set<Exemption<Taxonomy, ?, ?>> exemptions() {
+            return Set.of(new Exemption<>(Taxonomy.class, EveryUnitIsSeen.class, SeenOnPurpose.class));
+        }
+    }
+
+    /** A class not among those scanned, whose exemption is stale. */
+    private record ScannerExemptions() implements Exemptions<Scanner> {
+
+        @Override
+        public Set<Exemption<Scanner, ?, ?>> exemptions() {
+            return Set.of(new Exemption<>(Scanner.class, EveryUnitIsSeen.class, SeenOnPurpose.class));
+        }
     }
 
     /** Holds each scan back until the test lets it go. */

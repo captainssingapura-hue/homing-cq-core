@@ -13,7 +13,8 @@ import java.util.stream.Stream;
 
 /**
  * The report's summary, in Markdown, for a person to read first: when it ran and over what, how it came out, the
- * totals, each rule, the packages and classes that need the most work, and what could not be checked.
+ * totals, each rule, the packages and classes that need the most work, what is exempted, and what could not be checked.
+ * Exempted findings count as findings here, as they do on the bench: an exemption changes no code.
  */
 record ReportSummary() implements StatelessFunctionalObject {
 
@@ -24,7 +25,8 @@ record ReportSummary() implements StatelessFunctionalObject {
     /** The summary of a scan, made by a declaration at a time. */
     String text(final ScanResult result, final Declaration declaration, final Instant time) {
         return Stream.of(declared(declaration, time), outcome(result), totals(result), rules(result),
-                        packages(result), classes(result), unsourced(result), threw(result))
+                        packages(result), classes(result), exempted(result), stale(result), unsourced(result),
+                        threw(result))
                 .flatMap(List::stream)
                 .collect(Collectors.joining("\n", "", "\n"));
     }
@@ -34,7 +36,9 @@ record ReportSummary() implements StatelessFunctionalObject {
                 "Ran at " + time + ".", "",
                 "- Packages: " + quoted(declaration.packages()),
                 "- Rulesets: " + quoted(declaration.rulesets().stream().map(set -> set.getClass().getName()).toList()),
-                "- Source folders: " + declaration.sources().size());
+                "- Source folders: " + declaration.sources().size(),
+                "- Exemptions: " + declaration.exemptions().stream().mapToInt(forClass -> forClass.exemptions().size())
+                        .sum());
     }
 
     private List<String> outcome(final ScanResult result) {
@@ -48,6 +52,9 @@ record ReportSummary() implements StatelessFunctionalObject {
         return List.of("", "## Totals", "", "| | |", "|---|---|",
                 "| Units complying | " + complying(result.compliance()) + " |",
                 "| Findings | " + result.compliance().findings() + " |",
+                "| Findings exempted | " + applied.stream().filter(Applied::exempted)
+                        .mapToInt(Applied::findingCount).sum() + " |",
+                "| Stale exemptions | " + result.stale().size() + " |",
                 "| Notices | " + applied.stream().mapToInt(this::notices).sum() + " |",
                 "| Rules that threw | " + applied.stream().filter(this::threw).count() + " |");
     }
@@ -105,6 +112,29 @@ record ReportSummary() implements StatelessFunctionalObject {
                 .toList();
         return section("## The " + MOST_FINDINGS + " classes with the most findings", rows,
                 List.of("| Class | Findings |", "|---|---|"));
+    }
+
+    /** Each rule a class is let off, by class and then by rule, with the excuse it pleads and what it let off. */
+    private List<String> exempted(final ScanResult result) {
+        final List<String> rows = result.units().items().stream()
+                .sorted(Comparator.comparing(scanned -> scanned.unit().type().getName()))
+                .flatMap(scanned -> scanned.applied().items().stream().filter(Applied::exempted)
+                        .map(applied -> "| `" + scanned.unit().type().getName() + "` | `"
+                                + applied.signature().rule().getSimpleName() + "` | `"
+                                + applied.exemption().orElseThrow().excuse().getName() + "` | "
+                                + applied.findingCount() + " |"))
+                .toList();
+        return section("## Exempted", rows, List.of("| Class | Rule | Excuse | Findings let off |",
+                "|---|---|---|---|"));
+    }
+
+    private List<String> stale(final ScanResult result) {
+        final List<String> rows = result.stale().stream()
+                .map(stale -> "| `" + stale.exemption().offender().getName() + "` | `"
+                        + stale.exemption().rule().getSimpleName() + "` | `"
+                        + stale.exemption().excuse().getName() + "` | " + stale.text() + " |")
+                .toList();
+        return section("## Stale exemptions", rows, List.of("| Class | Rule | Excuse | How |", "|---|---|---|---|"));
     }
 
     private List<String> unsourced(final ScanResult result) {

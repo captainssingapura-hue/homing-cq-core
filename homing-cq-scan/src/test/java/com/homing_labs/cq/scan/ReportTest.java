@@ -127,7 +127,7 @@ class ReportTest {
     void theTableStartsWithItsColumnsAndEndsEachLineWithANewlineAlone() {
         final String table = Report.INSTANCE.table(new ReportRows(rows(DEFINITIONS, new FoundTwiceEnforcer())));
         assertTrue(table.startsWith(
-                "id\tentry\tpackage\tclass\tcodebase\tsource\tprinciple\trule\tfinding\tdetails\n"));
+                "id\tentry\tpackage\tclass\tcodebase\tsource\tprinciple\trule\tfinding\tdetails\texcuse\n"));
         assertTrue(table.endsWith("\n"));
         assertFalse(table.contains("\r"));
     }
@@ -151,11 +151,11 @@ class ReportTest {
         final String summary = Report.INSTANCE.summary(result, checked, TIME);
         assertTrue(summary.startsWith("# CQ report\n\nRan at 2026-11-05T09:30:00Z.\n\n"
                 + "- Packages: `" + DEFINITIONS + "`\n"
-                + "- Rulesets: `" + Listed.class.getName() + "`\n- Source folders: 0\n\n"
+                + "- Rulesets: `" + Listed.class.getName() + "`\n- Source folders: 0\n- Exemptions: 0\n\n"
                 + Gate.INSTANCE.closing(result) + "\n"), summary);
         assertTrue(summary.contains("| Units complying | 0 of " + units + " (0.0%) |\n"), summary);
-        assertTrue(summary.contains("| Findings | " + 2 * units + " |\n| Notices | 0 |\n| Rules that threw | 0 |\n"),
-                summary);
+        assertTrue(summary.contains("| Findings | " + 2 * units + " |\n| Findings exempted | 0 |\n"
+                + "| Stale exemptions | 0 |\n| Notices | 0 |\n| Rules that threw | 0 |\n"), summary);
         assertTrue(summary.contains("| `" + FoundTwice.class.getName() + "` | `" + Neatness.class.getName() + "` | "
                 + units + " | " + units + " | " + 2 * units + " | 0 |\n"), summary);
         assertTrue(summary.contains("| `" + DEFINITIONS + "` | 0 of " + units + " (0.0%) |\n"), summary);

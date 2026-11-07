@@ -39,8 +39,8 @@ public record Bench() implements StatelessFunctionalObject {
         stage.setTitle("CQ Bench");
         stage.setScene(new Scene(BenchPane.INSTANCE.content(String.join(", ", declaration.packages()),
                 declaration.rulesets(), declaration.sources(), getClass().getClassLoader(),
-                List.of(new ClassObjectView(), new RulesView()), new SourceView(), ScanThread.InBackground.INSTANCE,
-                meter), 1600, 900));
+                List.of(new ClassObjectView(), new RulesView()), new SourceView(), declaration.exemptions(),
+                ScanThread.InBackground.INSTANCE, meter), 1600, 900));
         stage.show();
     }
 }

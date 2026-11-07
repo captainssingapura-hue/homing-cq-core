@@ -31,14 +31,24 @@ record ReportTable() implements StatelessFunctionalObject {
     static final ReportTable INSTANCE = new ReportTable();
 
     private static final String COLUMNS =
-            "id\tentry\tpackage\tclass\tcodebase\tsource\tprinciple\trule\tfinding\tdetails";
+            "id\tentry\tpackage\tclass\tcodebase\tsource\tprinciple\trule\tfinding\tdetails\texcuse";
 
     /** The rows of a scan, sorted: source paths relative to {@code root} when it is given and holds them. */
     ReportRows rows(final ScanResult result, final Optional<Path> root) {
-        return new ReportRows(result.units().items().stream()
-                .sorted(Comparator.comparing(scanned -> scanned.unit().type().getName()))
-                .flatMap(scanned -> rows(scanned, root))
-                .toList());
+        return new ReportRows(Stream.concat(result.units().items().stream()
+                        .sorted(Comparator.comparing(scanned -> scanned.unit().type().getName()))
+                        .flatMap(scanned -> rows(scanned, root)),
+                result.stale().stream().map(this::row)).toList());
+    }
+
+    /** A stale exemption's row: what it names may not have been scanned, so it says no more than the exemption does. */
+    private ReportRow row(final StaleExemption stale) {
+        final Class<?> offender = stale.exemption().offender();
+        final String rule = stale.exemption().rule().getSimpleName();
+        return new ReportRow(rule + ":" + offender.getName() + "#stale", "stale", offender.getPackageName(),
+                offender.getName(), codebase(offender), Optional.empty(), "", rule,
+                Optional.of(stale.getClass().getSimpleName()), stale.text(),
+                Optional.of(stale.exemption().excuse().getSimpleName()));
     }
 
     /** The rows as a table: a header, then a line for each row, each ending in {@code \n} on every platform. */
@@ -70,7 +80,7 @@ record ReportTable() implements StatelessFunctionalObject {
             final Entry entry = entries.get(index);
             return new ReportRow(rule + ":" + unit.name() + "#" + (index + 1), entry.kind(), unit.packageName(),
                     unit.name(), unit.codebase(), unit.source(), entry.signature().principle().getSimpleName(), rule,
-                    entry.finding(), entry.details());
+                    entry.finding(), entry.details(), entry.excuse());
         });
     }
 
@@ -83,22 +93,23 @@ record ReportTable() implements StatelessFunctionalObject {
 
     private Stream<Entry> findings(final Applied applied) {
         return applied.result().stream().<Scalar>flatMap(result -> result.findings().items().stream())
-                .map(finding -> entry(applied, "finding", finding));
+                .map(finding -> entry(applied, applied.exempted() ? "exempted" : "finding", finding,
+                        applied.exemption().map(exemption -> exemption.excuse().getSimpleName())));
     }
 
     private Stream<Entry> notices(final Applied applied) {
         return applied.result().stream().<Scalar>flatMap(result -> result.notices().items().stream())
-                .map(notice -> entry(applied, "notice", notice));
+                .map(notice -> entry(applied, "notice", notice, Optional.empty()));
     }
 
     private Stream<Entry> failures(final Applied applied) {
         return applied.failure().stream()
-                .map(failure -> new Entry(applied.signature(), "failure", Optional.empty(), failure));
+                .map(failure -> new Entry(applied.signature(), "failure", Optional.empty(), failure, Optional.empty()));
     }
 
-    private Entry entry(final Applied applied, final String kind, final Scalar found) {
+    private Entry entry(final Applied applied, final String kind, final Scalar found, final Optional<String> excuse) {
         return new Entry(applied.signature(), kind, Optional.of(found.getClass().getSimpleName()),
-                ResultText.INSTANCE.of(found));
+                ResultText.INSTANCE.of(found), excuse);
     }
 
     private Located located(final JavaUnit unit, final Optional<Path> root) {
@@ -150,6 +161,7 @@ record ReportTable() implements StatelessFunctionalObject {
     }
 
     /** One thing a rule came to on a unit. */
-    private record Entry(EnforcerSignature signature, String kind, Optional<String> finding, String details) {
+    private record Entry(EnforcerSignature signature, String kind, Optional<String> finding, String details,
+                         Optional<String> excuse) {
     }
 }

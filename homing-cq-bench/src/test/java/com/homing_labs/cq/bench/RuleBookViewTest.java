@@ -8,6 +8,8 @@ import com.homing_labs.cq.lang.java.taxonomy.ClassKind;
 import com.homing_labs.cq.lang.java.unit.InterfaceUnit;
 import com.homing_labs.cq.lang.java.unit.RecordUnit;
 import com.homing_labs.cq.scan.Compliance;
+import com.homing_labs.cq.scan.Exemption;
+import com.homing_labs.cq.scan.Exemptions;
 import com.homing_labs.cq.scan.PackageRuleset;
 import com.homing_labs.cq.scan.Ruleset;
 import com.homing_labs.cq.scan.ScanResult;
@@ -15,6 +17,7 @@ import com.homing_labs.cq.scan.ScannedUnit;
 import com.homing_labs.cq.scan.Scanner;
 import com.homing_labs.cq.scan.rules.EveryUnitIsSeen;
 import com.homing_labs.cq.scan.rules.InterfacesAreSeen;
+import com.homing_labs.cq.scan.rules.AnInterfaceOnPurpose;
 import com.homing_labs.cq.scan.rules.Neatness;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -28,9 +31,11 @@ import org.junit.jupiter.api.TestInstance;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -101,6 +106,37 @@ class RuleBookViewTest {
         final int interfaces = violations.size();
         assertEquals("0 of the " + interfaces + " units it checks comply; " + interfaces + " findings on the rest.",
                 FxThread.INSTANCE.call(book::found));
+    }
+
+    @Test
+    void whatARuleFoundOnAnExemptedClassIsListedAsExemptedAndStillCounted() {
+        final RuleBookView book = FxThread.INSTANCE.call(() -> {
+            final RuleBookView exempting = new RuleBookView(rules, List.of(RULE_SOURCES), loader);
+            exempting.scanned(Scanner.INSTANCE.scan(List.of(TAXONOMY), rules, List.of(),
+                    List.of(new ClassKindExemptions()), loader));
+            exempting.select(InterfacesAreSeen.class);
+            return exempting;
+        });
+        final int interfaces = units(InterfaceUnit.class).size();
+        assertEquals(interfaces, FxThread.INSTANCE.call(book::violations).size());
+        assertTrue(FxThread.INSTANCE.call(book::violations).contains(
+                new RuleBookView.Violation(ClassKind.class, "exempted (AnInterfaceOnPurpose): Seen[unit=ClassKind]")));
+        assertEquals("0 of the " + interfaces + " units it checks comply; " + interfaces
+                + " findings on the rest, 1 of them exempted.", FxThread.INSTANCE.call(book::found));
+        assertEquals(List.of("Excused by", "AnInterfaceOnPurpose", "This interface is there to be seen."),
+                FxThread.INSTANCE.call(() -> {
+                    final List<String> explanation = book.explanation();
+                    return explanation.subList(explanation.indexOf("Excused by"), explanation.size());
+                }), "an excuse's reason is in its documentation");
+    }
+
+    @Test
+    void aRuleNobodyExcusesSaysNothingOfExcuses() {
+        final RuleBookView book = FxThread.INSTANCE.call(() -> book(rules));
+        assertFalse(FxThread.INSTANCE.call(() -> {
+            book.select(InterfacesAreSeen.class);
+            return book.explanation();
+        }).contains("Excused by"));
     }
 
     @Test
@@ -207,6 +243,15 @@ class RuleBookViewTest {
                 (TableView<RuleBookView.Entry>) window.getScene().getRoot().lookup("#book-rules");
         return String.join(", ", table.getItems().stream()
                 .map(entry -> entry.rule().getSimpleName() + " checks " + entry.compliance().total()).toList());
+    }
+
+    /** A class let off a rule that finds something on it. */
+    private record ClassKindExemptions() implements Exemptions<ClassKind> {
+
+        @Override
+        public Set<Exemption<ClassKind, ?, ?>> exemptions() {
+            return Set.of(new Exemption<>(ClassKind.class, InterfacesAreSeen.class, AnInterfaceOnPurpose.class));
+        }
     }
 
     /** A ruleset of the enforcers it lists. */

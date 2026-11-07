@@ -252,7 +252,26 @@ public final class RuleBookView implements Mutable {
                             + unitName(Enforcers.INSTANCE.signatureOf(enforcer).unit())));
                     lines.add(paragraph(doc(enforcer.getClass())));
                 });
+        final List<Class<?>> excuses = excuses(entry);
+        if (!excuses.isEmpty()) {
+            lines.add(heading("Excused by"));
+        }
+        excuses.forEach(excuse -> {
+            lines.add(subheading(excuse.getSimpleName()));
+            lines.add(paragraph(doc(excuse)));
+        });
         return lines;
+    }
+
+    /** Each excuse pleaded to the rule on the units scanned, once, by name: its reason is in its documentation. */
+    private List<Class<?>> excuses(final Entry entry) {
+        return result.units().items().stream()
+                .flatMap(scanned -> applied(scanned, entry.rule()).stream())
+                .flatMap(applied -> applied.exemption().stream())
+                .<Class<?>>map(exemption -> exemption.excuse())
+                .distinct()
+                .sorted(Comparator.comparing((Class<?> excuse) -> excuse.getSimpleName()))
+                .toList();
     }
 
     private String doc(final Class<?> type) {
@@ -264,7 +283,7 @@ public final class RuleBookView implements Mutable {
     private List<Violation> violations(final Entry entry) {
         return result.units().items().stream()
                 .flatMap(scanned -> applied(scanned, entry.rule()).stream()
-                        .flatMap(applied -> applied.result().isPresent() ? applied.findings().stream()
+                        .flatMap(applied -> applied.result().isPresent() ? applied.markedFindings().stream()
                                 : applied.failure().stream().map(failure -> FAILED + failure))
                         .map(finding -> new Violation(scanned.unit().type(), finding)))
                 .toList();
@@ -275,9 +294,13 @@ public final class RuleBookView implements Mutable {
         if (compliance.total() == 0) {
             return entry.rule().getSimpleName() + " checks none of the units scanned.";
         }
+        final int exempted = result.units().items().stream()
+                .flatMap(scanned -> applied(scanned, entry.rule()).stream())
+                .filter(Applied::exempted).mapToInt(Applied::findingCount).sum();
         return compliance.compliant() + " of the " + count(compliance.total(), "unit") + " it checks "
                 + (compliance.compliant() == 1 ? "complies" : "comply")
                 + (compliance.findings() > 0 ? "; " + count(compliance.findings(), "finding") + " on the rest" : "")
+                + (exempted > 0 ? ", " + exempted + " of them exempted" : "")
                 + (entry.failed() > 0 ? "; it failed on " + count(entry.failed(), "unit") : "") + ".";
     }
 

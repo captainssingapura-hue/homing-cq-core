@@ -28,6 +28,7 @@ class DeclarationTest {
         assertEquals(List.of(), nothing.packages());
         assertEquals(List.of(), nothing.rulesets());
         assertEquals(List.of(), nothing.sources());
+        assertEquals(List.of(), nothing.exemptions());
     }
 
     @Test

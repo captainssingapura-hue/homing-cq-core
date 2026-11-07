@@ -48,7 +48,7 @@
             <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
             <artifactId>core</artifactId>
         </dependency>
-        <!-- the bench, which shows what DemoCode and BasicRules declare -->
+        <!-- the bench, which shows what DemoCode, BasicRules and DemoExemptions declare -->
         <dependency>
             <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
             <artifactId>homing-cq-bench</artifactId>
@@ -74,7 +74,7 @@
                 <version>0.0.8</version>
                 <configuration>
                     <mainClass>com.homing_labs.cq.bench.Bench</mainClass>
-                    <commandlineArgs>com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules</commandlineArgs>
+                    <commandlineArgs>com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules com.homing_labs.cq.demo.exempted.DemoExemptions</commandlineArgs>
                 </configuration>
             </plugin>
             <!-- mvn exec:java writes the report over the same declarations; run alone, it fails nothing -->
@@ -84,7 +84,7 @@
                 <version>3.6.3</version>
                 <configuration>
                     <mainClass>com.homing_labs.cq.scan.Report</mainClass>
-                    <commandlineArgs>--out ${project.build.directory}/cq-report com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules</commandlineArgs>
+                    <commandlineArgs>--out ${project.build.directory}/cq-report com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules com.homing_labs.cq.demo.exempted.DemoExemptions</commandlineArgs>
                 </configuration>
             </plugin>
         </plugins>

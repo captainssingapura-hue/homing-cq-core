@@ -1,5 +1,6 @@
 package com.homing_labs.cq.bench;
 
+import com.homing_labs.cq.scan.Exemptions;
 import com.homing_labs.cq.scan.Ruleset;
 import com.homing_labs.cq.scan.Scanner;
 import hue.captains.singapura.tao.ontology.StatelessFunctionalObject;
@@ -43,14 +44,16 @@ public record BenchPane() implements StatelessFunctionalObject {
      */
     public Parent content(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
                           final ClassLoader loader, final List<BenchView> views, final SourceView source) {
-        return content(rootPackages, rulesets, sources, loader, views, source, ScanThread.AtOnce.INSTANCE,
+        return content(rootPackages, rulesets, sources, loader, views, source, List.of(), ScanThread.AtOnce.INSTANCE,
                 new BenchMeter());
     }
 
-    /** The bench as above, its scans run by {@code thread}, each one measured on {@code meter}. */
+    /**
+     * The bench as above, with {@code exemptions}, its scans run by {@code thread}, each one measured on {@code meter}.
+     */
     public Parent content(final String rootPackages, final List<Ruleset> rulesets, final List<Path> sources,
                           final ClassLoader loader, final List<BenchView> views, final SourceView source,
-                          final ScanThread thread, final BenchMeter meter) {
+                          final List<Exemptions<?>> exemptions, final ScanThread thread, final BenchMeter meter) {
         final TreeView<IndexEntry> units = tree("units");
         units.setShowRoot(false);
         final TreeView<IndexEntry> nest = tree("nest");
@@ -73,8 +76,8 @@ public record BenchPane() implements StatelessFunctionalObject {
         final RuleBookView book = new RuleBookView(rulesets, sources, loader);
         final Button button = new Button("Scan");
         button.setId("scan");
-        final BenchScan scan = new BenchScan(rulesets, sources, loader, thread, meter, units, status, button,
-                result -> {
+        final BenchScan scan = new BenchScan(rulesets, sources, exemptions, loader, thread, meter, units, status,
+                button, result -> {
                     views.forEach(view -> view.scanned(result));
                     book.scanned(result);
                 }, () -> {
