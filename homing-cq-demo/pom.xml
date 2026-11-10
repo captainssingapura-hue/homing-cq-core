@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+        <artifactId>homing-cq-core-parent</artifactId>
+        <version>VOID-SNAPSHOT</version>
+    </parent>
+
+    <!-- A demo of what a project does with the framework: it declares its code, opts in to the basic rules, and
+         checks the one by the other, here on the framework's own code. -->
+    <artifactId>homing-cq-demo</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-rules-basic</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-enforcer-model</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java-taxonomy</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java-lexer</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java-outline</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <!-- the bench, which shows what DemoCode, BasicRules and DemoExemptions declare -->
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-bench</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
+            <artifactId>enforcer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- mvn javafx:run starts the bench over the declarations it names, composed -->
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.0.8</version>
+                <configuration>
+                    <mainClass>com.homing_labs.cq.bench.Bench</mainClass>
+                    <commandlineArgs>com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules com.homing_labs.cq.demo.exempted.DemoExemptions</commandlineArgs>
+                </configuration>
+            </plugin>
+            <!-- mvn exec:java writes the report over the same declarations; run alone, it fails nothing -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <mainClass>com.homing_labs.cq.scan.Report</mainClass>
+                    <commandlineArgs>--out ${project.build.directory}/cq-report com.homing_labs.cq.demo.DemoCode com.homing_labs.cq.rules.basic.BasicRules com.homing_labs.cq.demo.exempted.DemoExemptions</commandlineArgs>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

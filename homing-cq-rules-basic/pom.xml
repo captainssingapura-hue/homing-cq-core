@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+        <artifactId>homing-cq-core-parent</artifactId>
+        <version>VOID-SNAPSHOT</version>
+    </parent>
+
+    <!--
+        Basic rules a project opts in to: it depends on this module and declares BasicRules, or the rulesets it wants.
+        Nothing in the framework depends on this module, and it brings in no UI.
+    -->
+    <artifactId>homing-cq-rules-basic</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-scan</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-enforcer-model</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java-taxonomy</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java-lexer</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+            <artifactId>homing-cq-lang-java-outline</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.github.captainssingapura-hue.lang.ontology</groupId>
+            <artifactId>enforcer</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <resources>
+            <!--
+                The sources, in the jar: the bench's rule book reads each rule's explanation from them, and a project
+                that takes this module from a repository has no source directory for it.
+            -->
+            <resource>
+                <directory>src/main/java</directory>
+                <targetPath>META-INF/homing-cq/sources</targetPath>
+                <includes>
+                    <include>**/*.java</include>
+                </includes>
+            </resource>
+        </resources>
+    </build>
+
+</project>
