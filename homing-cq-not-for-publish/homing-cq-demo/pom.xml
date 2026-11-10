@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
-        <artifactId>homing-cq-core-parent</artifactId>
+        <artifactId>homing-cq-not-for-publish</artifactId>
         <version>VOID-SNAPSHOT</version>
     </parent>
 

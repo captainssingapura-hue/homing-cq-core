@@ -74,6 +74,32 @@ class DeclarationTest {
         assertEquals(List.of(own, other), sourcesAnchoredIn(classes));
     }
 
+    @Test
+    void aNestedModulesReactorIsTheHighestWithAPomAndHasItsModulesAtAnyDepth(@TempDir final Path root)
+            throws Exception {
+        Files.writeString(root.resolve("pom.xml"), "<project/>");
+        module(root.resolve("beside"));
+        final Path reactor = Files.createDirectories(root.resolve("plain/reactor"));
+        Files.writeString(reactor.resolve("pom.xml"), "<project/>");
+        final Path top = module(reactor.resolve("top"));
+        Files.createDirectories(reactor.resolve("nest"));
+        Files.writeString(reactor.resolve("nest/pom.xml"), "<project/>");
+        final Path nested = module(reactor.resolve("nest/module"));
+        final Path sibling = module(reactor.resolve("nest/sibling"));
+        Files.createDirectories(reactor.resolve("loose/src/main/java"));
+        module(reactor.resolve("loose/inner"));
+        final Path classes = reactor.resolve("nest/module/target/classes");
+        copyLone(classes);
+        assertEquals(List.of(nested, sibling, top), sourcesAnchoredIn(classes));
+    }
+
+    /** A module with a {@code pom.xml} and main sources at {@code folder}: its sources. */
+    private Path module(final Path folder) throws IOException {
+        final Path sources = Files.createDirectories(folder.resolve("src/main/java"));
+        Files.writeString(folder.resolve("pom.xml"), "<project/>");
+        return sources;
+    }
+
     private void copyLone(final Path classes) throws IOException, URISyntaxException {
         final String file = Lone.class.getName().replace('.', '/') + ".class";
         final Path built = Path.of(Lone.class.getProtectionDomain().getCodeSource().getLocation().toURI())
