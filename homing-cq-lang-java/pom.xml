@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
         <artifactId>homing-cq-core-parent</artifactId>
-        <version>VOID-SNAPSHOT</version>
+        <version>LOCAL-SNAPSHOT</version>
     </parent>
 
     <!-- Java, built in: its QcUnit, and reading those units from a module's compiled classes and sources. -->

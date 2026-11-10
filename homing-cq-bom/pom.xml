@@ -11,7 +11,7 @@
          listed here, and nothing in homing-cq-not-for-publish. -->
     <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
     <artifactId>homing-cq-bom</artifactId>
-    <version>VOID-SNAPSHOT</version>
+    <version>LOCAL-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <dependencyManagement>

@@ -6,7 +6,7 @@
 
     <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
     <artifactId>homing-cq-core-parent</artifactId>
-    <version>VOID-SNAPSHOT</version>
+    <version>LOCAL-SNAPSHOT</version>
     <packaging>pom</packaging>
     <modules>
 
