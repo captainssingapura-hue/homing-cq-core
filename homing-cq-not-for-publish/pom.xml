@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+        <artifactId>homing-cq-core-parent</artifactId>
+        <version>VOID-SNAPSHOT</version>
+    </parent>
+
+    <!-- The modules that are built and tested with the rest but never published: the demo and the code CQ's own tests
+         read. They are its children, so publishing leaves out this module and everything under it in one place. -->
+    <artifactId>homing-cq-not-for-publish</artifactId>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>homing-cq-lang-java-fixtures</module>
+        <module>homing-cq-demo</module>
+    </modules>
+
+</project>

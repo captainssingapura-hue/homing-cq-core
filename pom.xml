@@ -14,14 +14,14 @@
         <module>homing-cq-enforcer-model</module>
         <module>homing-cq-core-model-principle</module>
         <module>homing-cq-lang-java</module>
-        <module>homing-cq-lang-java-fixtures</module>
         <module>homing-cq-lang-java-taxonomy</module>
         <module>homing-cq-lang-java-lexer</module>
         <module>homing-cq-lang-java-outline</module>
         <module>homing-cq-scan</module>
         <module>homing-cq-rules-basic</module>
         <module>homing-cq-bench</module>
-        <module>homing-cq-demo</module>
+        <module>homing-cq-bom</module>
+        <module>homing-cq-not-for-publish</module>
     </modules>
 
     <properties>

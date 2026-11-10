@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- CQ's published artifacts at one version, for a project to import: it then names them without versions, and
+         those it gets through others are held to the same one. It has no parent on purpose, as importing it brings in
+         all it manages, inherited or not, and it should change no version but CQ's own; so it states its group and
+         version itself, and needs the metadata Central requires of its own too. Every module that is published is
+         listed here, and nothing in homing-cq-not-for-publish. -->
+    <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+    <artifactId>homing-cq-bom</artifactId>
+    <version>VOID-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-core-model-principle</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-core-model</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-enforcer-model</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-lang-java</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-lang-java-taxonomy</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-lang-java-lexer</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-lang-java-outline</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-scan</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-rules-basic</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
+                <artifactId>homing-cq-bench</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+</project>
