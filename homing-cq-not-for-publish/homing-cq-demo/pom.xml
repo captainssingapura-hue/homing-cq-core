@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
         <artifactId>homing-cq-not-for-publish</artifactId>
-        <version>VOID-SNAPSHOT</version>
+        <version>LOCAL-SNAPSHOT</version>
     </parent>
 
     <!-- A demo of what a project does with the framework: it declares its code, opts in to the basic rules, and

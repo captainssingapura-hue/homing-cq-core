@@ -6,7 +6,7 @@
     <parent>
         <groupId>io.github.captainssingapura-hue.homing.cq</groupId>
         <artifactId>homing-cq-not-for-publish</artifactId>
-        <version>VOID-SNAPSHOT</version>
+        <version>LOCAL-SNAPSHOT</version>
     </parent>
 
     <!-- Code for homing-cq-lang-java's tests to read: a module that knows nothing of CQ, as checked code never does. -->
